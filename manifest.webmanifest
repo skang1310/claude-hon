@@ -1,0 +1,15 @@
+{
+  "name": "클로드혼 — 다 굴려 먹자",
+  "short_name": "클로드혼",
+  "description": "버그 한 마리에서 빅테크까지, 전부 굴려 먹는 3D 게임",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#F0EEE6",
+  "theme_color": "#D97757",
+  "lang": "ko",
+  "icons": [
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
