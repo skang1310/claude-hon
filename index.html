@@ -77,6 +77,20 @@
   .upg small { display:block; font-size:12px; font-weight:500; color:var(--sub); line-height:1.4; margin-top:2px; word-break:keep-all; }
   .upg i { flex:none; font-style:normal; font-size:11px; font-weight:800; background:var(--clay); color:#fff; padding:4px 8px; border-radius:20px; }
   .valley { font-size:15px; font-weight:900; font-style:italic; letter-spacing:.34em; color:var(--clay-d); margin:-2px 0 4px; padding-left:.34em; }
+  #boss { display:none; margin-top:8px; }
+  #bossname { font-size:12px; font-weight:800; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.6); }
+  #bossbar { height:9px; border-radius:5px; background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.35); overflow:hidden; margin-top:3px; }
+  #bossfill { height:100%; width:100%; background:linear-gradient(90deg,#FF3B30,#FF9F0A); transition:width .15s; }
+  .upg.evo { background:linear-gradient(135deg,#FFF4C2,#FFD86B); border-color:#FFB800; box-shadow:0 5px 0 #A67400, 0 0 26px rgba(255,200,40,.8); }
+  .upg.evo i { background:#1F1E1D; }
+  #reroll { width:auto; margin:0; padding:10px 18px; font-size:14px; background:rgba(14,16,20,.6); border:1px solid rgba(255,255,255,.4); box-shadow:none; }
+  #models { display:flex; gap:6px; margin:10px 0 4px; }
+  #models button { margin:0; padding:9px 4px; font-size:14px; background:var(--bg); color:var(--sub); box-shadow:none; border:2px solid transparent; }
+  #models button.sel { background:#fff; color:var(--ink); border-color:var(--clay); }
+  #modeldesc { font-size:12px; color:var(--sub); min-height:17px; }
+  #event { font-size:12.5px; color:var(--ink); background:#FFF3D6; border:1px solid #F1D48A; border-radius:12px; padding:8px 10px; margin:10px 0 0; }
+  #achline, #ach { font-size:12px; color:var(--sub); margin-top:6px; }
+  #ach b { color:var(--clay-d); }
   #combo { position:absolute; right:16px; top:calc(env(safe-area-inset-top) + 132px); font-weight:900; font-size:26px; color:#FFB08E; font-style:italic;
     text-shadow:0 2px 10px rgba(0,0,0,.55),0 0 2px rgba(0,0,0,.6); opacity:0; transition:opacity .2s; transform-origin:right center; }
   #combo.on { opacity:1; }
@@ -144,6 +158,7 @@
     </div>
     <div id="buffs"></div>
     <div id="mission"></div>
+    <div id="boss"><div id="bossname"></div><div id="bossbar"><div id="bossfill"></div></div></div>
   </div>
   <div id="combo"><span id="combon">×5</span><small>COMBO</small></div>
   <div id="banner"><b></b><i></i></div>
@@ -167,8 +182,12 @@
         🤖 <b>라이벌 AI 공</b>은 크면 피하고 작으면 먹기<br>
         🌇 <b>해 지기 전</b>에 빅테크 9곳을 전부 삼키면 승리
       </div>
+      <div id="event"></div>
+      <div id="models"><button data-m="haiku">Haiku</button><button data-m="sonnet">Sonnet</button><button data-m="opus">Opus</button></div>
+      <div id="modeldesc"></div>
       <button id="go">굴리기 시작</button>
       <div id="bestline"></div>
+      <div id="achline"></div>
       <div class="fine">팬메이드 패러디 게임입니다. 등장하는 회사명은 각 소유자의 상표이며, Anthropic을 포함한 어떤 회사와도 제휴·후원 관계가 없습니다.</div>
     </div>
   </div>
@@ -177,11 +196,13 @@
     <div id="lvtitle">LEVEL 2</div>
     <div id="lvsub">능력을 하나 고르세요</div>
     <div id="lvcards"></div>
+    <button id="reroll">🎲 다시 뽑기 (2)</button>
   </div>
 
   <div class="screen" id="over">
     <div class="panel">
       <img id="cardimg" alt="결과 카드">
+      <div id="ach"></div>
       <button id="share">결과 공유하기</button>
       <div class="btnrow">
         <button class="sec" id="sx">𝕏</button>
