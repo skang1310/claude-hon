@@ -49,6 +49,14 @@
   #buffs { margin-top:8px; display:flex; gap:6px; }
   #buffs span { font-size:13px; font-weight:800; padding:5px 11px; border-radius:20px; box-shadow:0 2px 10px rgba(0,0,0,.25); font-variant-numeric:tabular-nums; }
   #c { transition:filter 1.2s; }
+  #mission { display:none; margin-top:8px; font-size:13px; font-weight:800; color:#fff; background:rgba(214,48,36,.9); padding:6px 12px; border-radius:20px; box-shadow:0 2px 12px rgba(0,0,0,.3); animation:pulse .6s infinite alternate; transform-origin:left center; }
+  #dash { position:absolute; right:14px; bottom:calc(env(safe-area-inset-bottom) + 20px); width:88px; height:88px; border-radius:50%; padding:0; margin:0; display:none; pointer-events:auto;
+    background:radial-gradient(circle, rgba(18,20,26,.9) 57%, transparent 59%), conic-gradient(#FF7A45 var(--cd, 360deg), rgba(255,255,255,.22) 0); border:0; color:rgba(255,255,255,.55); font-size:17px; font-weight:900; box-shadow:0 6px 22px rgba(0,0,0,.4); touch-action:none; }
+  #dash.ready { color:#fff; box-shadow:0 0 0 2px rgba(255,255,255,.5), 0 0 22px rgba(255,122,69,.8); }
+  #dash:active { transform:scale(.93); box-shadow:0 2px 10px rgba(0,0,0,.4); }
+  #ui.fever::after { content:''; position:absolute; inset:0; pointer-events:none; box-shadow:inset 0 0 44px 8px rgba(255,96,24,.6); animation:fev .35s infinite alternate; }
+  @keyframes fev { to { box-shadow:inset 0 0 58px 12px rgba(255,190,40,.7); } }
+  .pop.say { background:#fff; color:#1F1E1D; text-shadow:none; font-size:12px; padding:5px 10px; border-radius:14px 14px 14px 3px; box-shadow:0 3px 10px rgba(0,0,0,.25); animation-duration:2.2s; }
   #combo { position:absolute; right:16px; top:calc(env(safe-area-inset-top) + 132px); font-weight:900; font-size:26px; color:#FFB08E; font-style:italic;
     text-shadow:0 2px 10px rgba(0,0,0,.55),0 0 2px rgba(0,0,0,.6); opacity:0; transition:opacity .2s; transform-origin:right center; }
   #combo.on { opacity:1; }
@@ -114,12 +122,14 @@
       <div id="bar"><div id="barfill"></div></div>
     </div>
     <div id="buffs"></div>
+    <div id="mission"></div>
   </div>
   <div id="combo"><span id="combon">×5</span><small>COMBO</small></div>
   <div id="banner"><b></b><i></i></div>
   <div id="hint"><span>👆 누른 채 드래그해서 굴리기</span></div>
   <div id="stick"><div id="knob"></div></div>
   <canvas id="radar" width="220" height="220"></canvas>
+  <button id="dash" aria-label="돌진">돌진</button>
 
   <div class="screen" id="start">
     <div class="panel">
@@ -132,7 +142,8 @@
         🟠 바닥에 <b>빛나는 링</b>이 있으면 먹을 수 있음<br>
         🏢 나보다 큰 건물은 부딪히면 튕겨요<br>
         🤖 <b>라이벌 AI 공</b>이 돌아다녀요. 나보다 크면 피하고, 작아지면 먹기<br>
-        💎 빛기둥은 <b>파워업</b> (속도 · 자석 · 시간)<br>
+        💥 <b>돌진</b> 버튼: 살짝 큰 것도 삼키고, 큰 건물·라이벌은 들이받아 깎기<br>
+        💎 빛기둥은 <b>파워업</b>, 🎯 <b>긴급 인수</b>는 +3초, 콤보 35는 🔥 <b>피버</b><br>
         🌇 <b>해가 지기 전</b>(2분 10초)에 빅테크 9곳을 전부 삼키면 승리
       </div>
       <button id="go">굴리기 시작</button>
