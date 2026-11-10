@@ -7,7 +7,8 @@ fiverr upwork wix squarespace wordpress medium substack linktree calendly loom e
 notion slack figma canva jira zendesk grammarly duolingo zoom dropbox asana trello airtable webflow framer miro intercom hubspot mailchimp typeform linear cursor vercel replit zapier stackoverflow daangn karrot toss baemin sketch
 adobe salesforce atlassian github shopify sap oracle workday servicenow mckinsey accenture naver kakao kakaotalk coupang netflix uber spotify ibm
 microsoft google apple amazon meta nvidia openai samsung tesla
-gitlab stripe twilio clickup discord datadog snowflake okta cisco intel paypal line airbnb linkedin dell hp lg hyundai""".split()
+gitlab stripe twilio clickup discord datadog snowflake okta cisco intel paypal line airbnb linkedin dell hp lg hyundai
+googlegemini githubcopilot perplexity mistralai x deepseek""".split()
 VERS = ['latest', '13.0.0', '11.0.0', '9.21.0', '8.0.0', '6.0.0', '5.0.0', '3.0.0']
 def get(slug):
     for v in VERS:

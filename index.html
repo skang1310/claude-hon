@@ -22,7 +22,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }</script>
 <style>
   :root { --bg:#F0EEE6; --ink:#1F1E1D; --sub:#6B6860; --clay:#D97757; --clay-d:#B85C3E; --card:#FAF9F5; --line:#DDD9CC; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -46,6 +46,9 @@
   #barfill { height:100%; width:0; background:#FF8A5C; box-shadow:0 0 8px #FF8A5C; border-radius:3px; transition:width .15s; }
   #mute { pointer-events:auto; width:40px; height:40px; border-radius:12px; border:1px solid rgba(255,255,255,.18); background:rgba(14,16,20,.5); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
     font-size:17px; padding:0; margin:0; box-shadow:none; color:var(--ink); flex:none; }
+  #buffs { margin-top:8px; display:flex; gap:6px; }
+  #buffs span { font-size:13px; font-weight:800; padding:5px 11px; border-radius:20px; box-shadow:0 2px 10px rgba(0,0,0,.25); font-variant-numeric:tabular-nums; }
+  #c { transition:filter 1.2s; }
   #combo { position:absolute; right:16px; top:calc(env(safe-area-inset-top) + 132px); font-weight:900; font-size:26px; color:#FFB08E; font-style:italic;
     text-shadow:0 2px 10px rgba(0,0,0,.55),0 0 2px rgba(0,0,0,.6); opacity:0; transition:opacity .2s; transform-origin:right center; }
   #combo.on { opacity:1; }
@@ -102,7 +105,7 @@
     <div class="row">
       <div class="pill"><div class="lab">기업가치</div><div class="val" id="worth">$10K</div></div>
       <div class="row">
-        <div class="pill" style="text-align:right"><div class="lab">남은 시간</div><div class="val" id="time">2:15</div></div>
+        <div class="pill" style="text-align:right"><div class="lab">남은 시간</div><div class="val" id="time">2:10</div></div>
         <button id="mute" aria-label="소리 끄기">🔊</button>
       </div>
     </div>
@@ -110,6 +113,7 @@
       <div id="nextlab"><span id="nextname">다음 해금</span><span id="eaten">0건 인수</span></div>
       <div id="bar"><div id="barfill"></div></div>
     </div>
+    <div id="buffs"></div>
   </div>
   <div id="combo"><span id="combon">×5</span><small>COMBO</small></div>
   <div id="banner"><b></b><i></i></div>
@@ -127,7 +131,9 @@
         👆 화면을 누른 채 <b>드래그</b>해서 굴리기<br>
         🟠 바닥에 <b>빛나는 링</b>이 있으면 먹을 수 있음<br>
         🏢 나보다 큰 건물은 부딪히면 튕겨요<br>
-        ⏱ <b>2분 15초</b> 안에 빅테크 9곳을 전부 삼키면 승리
+        🤖 <b>라이벌 AI 공</b>이 돌아다녀요. 나보다 크면 피하고, 작아지면 먹기<br>
+        💎 빛기둥은 <b>파워업</b> (속도 · 자석 · 시간)<br>
+        🌇 <b>해가 지기 전</b>(2분 10초)에 빅테크 9곳을 전부 삼키면 승리
       </div>
       <button id="go">굴리기 시작</button>
       <div id="bestline"></div>

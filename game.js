@@ -39,7 +39,7 @@ const TIERS = [
   { name:'엔터프라이즈', rmin:75,  rmax:115, d0:1300, d1:2950 },
   { name:'빅테크',       rmin:170, rmax:250, d0:2500, d1:4000 },
 ];
-const WORLD_R = 4400, EAT = 0.9, GROW = 0.32, GAME_TIME = 135, R0 = 12;
+const WORLD_R = 4400, EAT = 0.9, GROW = 0.28, GAME_TIME = 130, R0 = 12;
 const ROADS = [{ R: 470, w: 40 }, { R: 1050, w: 76 }, { R: 2000, w: 136 }, { R: 3300, w: 230 }];
 const SPOKES = 8, SPOKE0 = 0.39;
 const spokeW = d => d < 1050 ? 44 : d < 2000 ? 80 : 140;
@@ -70,19 +70,24 @@ const sky = new Sky();
 { const pm = new THREE.PMREMGenerator(renderer), es = new THREE.Scene(); sky.scale.setScalar(1000); es.add(sky); scene.environment = pm.fromScene(es, 0, 0.1, 5000).texture; pm.dispose(); }
 const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false, fog: false,
-  uniforms: { hz: { value: HAZE }, zn: { value: new THREE.Color().setRGB(0.2, 0.6, 2.1) }, sunDir: { value: SUN } },
+  uniforms: { hz: { value: HAZE }, zn: { value: new THREE.Color().setRGB(0.2, 0.6, 2.1) }, sunDir: { value: SUN }, night: { value: 0 } },
   vertexShader: 'varying vec3 d; void main(){ d = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-  fragmentShader: `uniform vec3 hz; uniform vec3 zn; uniform vec3 sunDir; varying vec3 d;
+  fragmentShader: `uniform vec3 hz; uniform vec3 zn; uniform vec3 sunDir; uniform float night; varying vec3 d;
+    float hash(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
     void main(){ vec3 n = normalize(d); float t = pow(clamp(n.y - 0.02, 0.0, 1.0), 0.6);
       vec3 c = mix(hz, zn, t); float s = max(dot(n, sunDir), 0.0);
-      c += vec3(1.0, 0.85, 0.6) * (pow(s, 6.0) * 0.5 + pow(s, 900.0) * 30.0);
+      c += mix(vec3(1.0, 0.85, 0.6), vec3(1.6, 0.55, 0.2), clamp(night * 2.5, 0.0, 1.0)) * (pow(s, 5.0) * (0.5 + night) + pow(s, 700.0) * 40.0);
+      float st = step(0.9965, hash(floor(n * 190.0))) * smoothstep(0.45, 1.0, night) * smoothstep(0.02, 0.25, n.y);
+      c += vec3(st * 2.2);
       gl_FragColor = vec4(c, 1.0);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
     }` }));
 dome.frustumCulled = false; dome.renderOrder = -2; scene.add(dome);
 const sun = new THREE.DirectionalLight('#FFEFD6', 4.2); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0004; scene.add(sun, sun.target);
-scene.add(new THREE.HemisphereLight('#DCEBFF', '#8A7F6C', 0.25));
+const hemi = new THREE.HemisphereLight('#DCEBFF', '#8A7F6C', 0.25); scene.add(hemi);
+const ballLamp = new THREE.PointLight('#FFC58A', 0, 100, 0); scene.add(ballLamp);
+const glowMats = [];
 
 const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 });
 const composer = new EffectComposer(renderer, rt);
@@ -191,7 +196,10 @@ function facade(style) {
     }
   };
   const map = tile(canvasTex(512, 512, c => draw(c, false))), orm = tile(canvasTex(512, 512, c => draw(c, true), false));
-  return { map, orm };
+  const R = style === 0 ? [5, 5, 118, 92] : style === 1 ? [0, 34, 128, 70] : [24, 20, 80, 82], lr = mulberry(90 + style), LC = ['#FFD9A0', '#FFE9C4', '#CFE4FF', '#FFC36B', '#FFF3D6'];
+  const lit = tile(canvasTex(512, 512, c => { c.fillStyle = '#000'; c.fillRect(0, 0, 512, 512); for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) { if (lr() > .46) continue; c.globalAlpha = .55 + lr() * .45; c.fillStyle = LC[(lr() * LC.length) | 0]; c.fillRect(i * 64 + R[0] / 2, j * 64 + R[1] / 2, R[2] / 2, R[3] / 2); } c.globalAlpha = 1; }));
+  lit.repeat.set(.5, .5);
+  return { map, orm, lit };
 }
 const FAC = [facade(0), facade(1), facade(2)];
 
@@ -227,6 +235,13 @@ const DOCS = {
 };
 const docTex = n => texCache['d' + n] || (texCache['d' + n] = canvasTex(256, 320, DOCS[n]));
 
+const waterN = tile(canvasTex(256, 256, (c, w, h) => {
+  const W8 = [[1, 2, 0], [2, -1, 1.3], [3, 1, 2.1], [-1, 3, .7], [4, 2, 3.3], [2, 5, 1.9], [5, -3, .4]], H = (x, y) => { let v = 0; for (const [a, b, ph] of W8) v += Math.sin((a * x + b * y) / 256 * 6.2832 + ph) / Math.hypot(a, b); return v; };
+  const id = c.createImageData(w, h), d = id.data;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const dx = (H(x + 1, y) - H(x - 1, y)) * 2.2, dy = (H(x, y + 1) - H(x, y - 1)) * 2.2, l = Math.hypot(dx, dy, 1), i = (y * w + x) * 4; d[i] = (-dx / l * .5 + .5) * 255; d[i + 1] = (-dy / l * .5 + .5) * 255; d[i + 2] = (1 / l * .5 + .5) * 255; d[i + 3] = 255; }
+  c.putImageData(id, 0, 0);
+}, false));
+
 /* ================= 에셋: 재질 · 지오메트리 ================= */
 const mats = {};
 const std = (col, rough = 0.8, metal = 0) => { const k = col + rough + '_' + metal; return mats[k] || (mats[k] = new THREE.MeshStandardMaterial({ color: col, roughness: rough, metalness: metal })); };
@@ -238,10 +253,11 @@ const MAT = {
 function facadeMat(col, style) {
   const k = 'f' + col + style; if (mats[k]) return mats[k];
   const c = new THREE.Color(col); if (lum(col) < 0.22) c.lerp(new THREE.Color('#8FA0B0'), 0.16);
-  return mats[k] = new THREE.MeshStandardMaterial({ color: c, map: FAC[style].map, roughnessMap: FAC[style].orm, metalnessMap: FAC[style].orm, roughness: 1, metalness: 1, envMapIntensity: 1.15 });
+  mats[k] = new THREE.MeshStandardMaterial({ color: c, map: FAC[style].map, roughnessMap: FAC[style].orm, metalnessMap: FAC[style].orm, roughness: 1, metalness: 1, envMapIntensity: 1.15, emissiveMap: FAC[style].lit, emissive: '#FFFFFF', emissiveIntensity: 0 });
+  glowMats.push({ m: mats[k], d: 0, n: 1.7 }); return mats[k];
 }
-const signMat = (name, slug, col) => { const k = 'sg' + name + col; if (mats[k]) return mats[k]; const t = signTex(name, slug, col); return mats[k] = new THREE.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: '#FFFFFF', emissiveIntensity: 1.0, roughness: 0.45 }); };
-const crownMat = (slug, col) => { const k = 'cr' + slug + col; if (mats[k]) return mats[k]; const t = logoTex(slug, col); return mats[k] = new THREE.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: '#FFFFFF', emissiveIntensity: 3.2, transparent: true, alphaTest: 0.35, roughness: 0.5, side: THREE.DoubleSide }); };
+const signMat = (name, slug, col) => { const k = 'sg' + name + col; if (mats[k]) return mats[k]; const t = signTex(name, slug, col); mats[k] = new THREE.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: '#FFFFFF', emissiveIntensity: 1.0, roughness: 0.45 }); glowMats.push({ m: mats[k], d: 1.0, n: 2.6 }); return mats[k]; };
+const crownMat = (slug, col) => { const k = 'cr' + slug + col; if (mats[k]) return mats[k]; const t = logoTex(slug, col); mats[k] = new THREE.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: '#FFFFFF', emissiveIntensity: 3.2, transparent: true, alphaTest: 0.35, roughness: 0.5, side: THREE.DoubleSide }); glowMats.push({ m: mats[k], d: 3.2, n: 6 }); return mats[k]; };
 const paint = col => mats['p' + col] || (mats['p' + col] = new THREE.MeshStandardMaterial({ color: col, roughness: 0.28, metalness: 0.55, envMapIntensity: 1.3 }));
 const docMat = n => mats['d' + n] || (mats['d' + n] = new THREE.MeshStandardMaterial({ map: docTex(n), roughness: 0.75 }));
 
@@ -370,7 +386,7 @@ const layer = (geos, material, off, tileSize) => { const m = new THREE.Mesh(flat
   const sandG = ringG(WORLD_R + 40, WORLD_R + 900), sp = sandG.attributes.position;
   for (let i = 0; i < sp.count; i++) if (Math.hypot(sp.getX(i), sp.getZ(i)) > WORLD_R + 500) sp.setY(i, -40);
   layer([sandG], new THREE.MeshStandardMaterial({ map: sandTex, roughness: 1 }), 1, 90);
-  const water = new THREE.Mesh(new THREE.CircleGeometry(400000, 64).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#0E6E8C', roughness: .12, metalness: .2, envMapIntensity: 1.6 })); water.position.y = -14; scene.add(water);
+  const water = new THREE.Mesh(new THREE.CircleGeometry(400000, 64).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#0E6E8C', roughness: .1, metalness: .25, envMapIntensity: 1.6, normalMap: waterN, normalScale: new THREE.Vector2(.18, .18) })); waterN.repeat.set(420, 420); waterN.anisotropy = MAXAN; water.position.y = -14; scene.add(water);
   const gr = mulberry(SEED + 5), grass = [];
   for (let i = 0; i < 70; i++) { const a = gr() * 6.283, d = 120 + Math.sqrt(gr()) * 4100, rad = 25 + d * (.05 + gr() * .09); const g = new THREE.CircleGeometry(rad, 28).rotateX(-Math.PI / 2); g.scale(1, 1, .6 + gr() * .5).rotateY(gr() * 3).translate(Math.cos(a) * d, 0, Math.sin(a) * d); grass.push(g); }
   layer(grass, new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1 }), 2, 70);
@@ -395,7 +411,8 @@ const layer = (geos, material, off, tileSize) => { const m = new THREE.Mesh(flat
   layer(wht, new THREE.MeshStandardMaterial({ color: '#E8E6DF', roughness: .7 }), 5, 100);
 }
 const clouds = new THREE.Group(); scene.add(clouds);
-{ const r = mulberry(31), cm = new THREE.MeshBasicMaterial({ map: cloudTex, transparent: true, depthWrite: false, fog: false, color: new THREE.Color(1.9, 1.9, 1.95) });
+const cloudMat = new THREE.MeshBasicMaterial({ map: cloudTex, transparent: true, depthWrite: false, fog: false, color: new THREE.Color(1.9, 1.9, 1.95) });
+{ const r = mulberry(31), cm = cloudMat, _unused = ({ map: cloudTex, transparent: true, depthWrite: false, fog: false, color: new THREE.Color(1.9, 1.9, 1.95) });
   for (let i = 0; i < 16; i++) { const az = r() * 6.283, el = .05 + r() * .32, m = new THREE.Mesh(PLANE, cm), s = .32 + r() * .4; m.position.set(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el)); m.scale.set(s, s * .42, 1); m.lookAt(0, 0, 0); m.renderOrder = -1; clouds.add(m); } }
 
 const ballPivot = new THREE.Group(); scene.add(ballPivot);
@@ -475,24 +492,15 @@ function build() {
   for (let i = 0; i < MAXE; i++) rings.setMatrixAt(i, ZERO);
   rings.instanceMatrix.needsUpdate = true;
   P = { x: 0, y: 0, vx: 0, vy: 0, r: R0 };
+  spawnBots(); pImm = 0; spawnPups(rnd); tweens = []; boostT = magT = slowT = finT = 0;
   ball.quaternion.identity();
   camR = R0; camX = 0; camZ = 0;
   timeLeft = GAME_TIME; eatenCount = 0; unlocked = 0; shake = 0; lastBumpMsg = 0; bigEaten = []; notable = []; comboN = 0; comboT = 0; maxCombo = 0; moved = false;
 }
 
 /* ================= 소리 ================= */
-let AC = null;
-function blip(freq, dur, type, vol) {
-  if (!AC || muted) return;
-  try {
-    const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime;
-    o.type = type || 'triangle'; o.frequency.setValueAtTime(freq, t); o.frequency.exponentialRampToValueAtTime(freq * 1.5, t + dur);
-    g.gain.setValueAtTime(vol || 0.08, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur);
-  } catch (e) {}
-}
 const buzz = p => { if (!muted && navigator.vibrate) navigator.vibrate(p); };
-$('mute').addEventListener('click', () => { muted = !muted; $('mute').textContent = muted ? '🔇' : '🔊'; });
+$('mute').addEventListener('click', () => { muted = !muted; $('mute').textContent = muted ? '🔇' : '🔊'; if (master) master.gain.value = muted ? 0 : 1; });
 
 /* ================= 입력 ================= */
 const stick = $('stick'), knob = $('knob'), SM = 56;
@@ -544,6 +552,202 @@ function burst(e) {
   parts.instanceColor.needsUpdate = true;
 }
 
+/* ================= 시간 흐름: 낮 → 노을 → 밤 ================= */
+const KEY = [ // tod, 지평선, 천정, 태양색, 태양 세기, 반구광, 노출, 밤 정도, 고도°, 방위°
+  { t: 0,    hz: [.42, .74, 1.3],  zn: [.05, .27, 1.05],    sc: [1, .94, .84], si: 4.2, he: .25, ex: .5,  n: 0,   el: 52, az: -135, ev: 1 },
+  { t: .3,   hz: [.6, .8, 1.2],    zn: [.06, .28, 1.0],   sc: [1, .88, .7],  si: 4.2, he: .25, ex: .5,  n: 0,   el: 34, az: -100, ev: 1 },
+  { t: .64,  hz: [2.5, 1.05, .4],  zn: [.3, .36, 1.2],   sc: [1, .52, .22], si: 3.4, he: .3,  ex: .5,  n: .45, el: 8,  az: -32, ev: .5 },
+  { t: 1,    hz: [.8, .42, .6],    zn: [.03, .045, .2],  sc: [1, .4, .3],   si: .35, he: .9,  ex: .52, n: 1,   el: -3, az: -22, ev: .1 },
+];
+const LDIR = new THREE.Vector3().copy(SUN);
+let todCur = .6, nightCur = -1;
+const L = (a, b, k) => a + (b - a) * k;
+function applyTod(target, dt) {
+  todCur += (target - todCur) * (1 - Math.exp(-dt * 1.5));
+  let i = 0; while (i < KEY.length - 2 && todCur > KEY[i + 1].t) i++;
+  const a = KEY[i], b = KEY[i + 1], k = Math.min(1, Math.max(0, (todCur - a.t) / (b.t - a.t)));
+  HAZE.setRGB(L(a.hz[0], b.hz[0], k), L(a.hz[1], b.hz[1], k), L(a.hz[2], b.hz[2], k)); scene.fog.color.copy(HAZE);
+  dome.material.uniforms.zn.value.setRGB(L(a.zn[0], b.zn[0], k), L(a.zn[1], b.zn[1], k), L(a.zn[2], b.zn[2], k));
+  sun.color.setRGB(L(a.sc[0], b.sc[0], k), L(a.sc[1], b.sc[1], k), L(a.sc[2], b.sc[2], k)); sun.intensity = L(a.si, b.si, k);
+  hemi.intensity = L(a.he, b.he, k); renderer.toneMappingExposure = L(a.ex, b.ex, k); scene.environmentIntensity = L(a.ev, b.ev, k);
+  const el = L(a.el, b.el, k) * Math.PI / 180, az = L(a.az, b.az, k) * Math.PI / 180, night = L(a.n, b.n, k);
+  SUN.set(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
+  const le = Math.max(el, .2); LDIR.set(Math.sin(az) * Math.cos(le), Math.sin(le), -Math.cos(az) * Math.cos(le));
+  dome.material.uniforms.night.value = night;
+  if (Math.abs(night - nightCur) > .015) { nightCur = night; for (const g of glowMats) g.m.emissiveIntensity = L(g.d, g.n, night); ballLamp.intensity = night * 2.6; hemi.color.setRGB(L(.86, .45, night), L(.92, .5, night), L(1, 1, night)); hemi.groundColor.setRGB(L(.54, .22, night), L(.5, .16, night), L(.42, .3, night)); cloudMat.color.setRGB(L(1.9, .5, night), L(1.9, .35, night), L(1.95, .5, night)); }
+}
+
+/* ================= 음악 · 효과음 ================= */
+let AC = null, master = null, noiseBuf = null, musicTimer = null, nextT = 0, stepN = 0;
+function audioInit() {
+  if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+  try {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    master = AC.createGain(); master.gain.value = muted ? 0 : 1;
+    const comp = AC.createDynamicsCompressor(); master.connect(comp); comp.connect(AC.destination);
+    noiseBuf = AC.createBuffer(1, AC.sampleRate * .5, AC.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  } catch (e) { AC = null; }
+}
+function tone(t, freq, dur, type, vol, to, cut) {
+  const o = AC.createOscillator(), g = AC.createGain(); o.type = type; o.frequency.setValueAtTime(freq, t); if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .012); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  if (cut) { const f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cut; o.connect(f); f.connect(g); } else o.connect(g);
+  g.connect(master); o.start(t); o.stop(t + dur + .02);
+}
+function hiss(t, dur, vol, hp) {
+  const s = AC.createBufferSource(), g = AC.createGain(), f = AC.createBiquadFilter(); s.buffer = noiseBuf; f.type = 'highpass'; f.frequency.value = hp;
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t + dur + .02);
+}
+function blip(freq, dur, type, vol) { if (!AC || muted) return; try { tone(AC.currentTime, freq, dur, type || 'triangle', vol || .08, freq * 1.5); } catch (e) {} }
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+const CH = [[57, 3], [53, 4], [48, 4], [55, 4]];          // Am F C G (근음, 3도)
+const LEAD = [12, 15, 19, 24, 19, 15, 17, 19, 12, 10, 12, 15, 19, 22, 19, 17];
+function musicStep(t, s, layer) {
+  const bar = (s >> 4) & 3, st = s & 15, [root, third] = CH[bar];
+  if (st % 4 === 0 || (layer >= 2 && st === 10)) tone(t, 130, .16, 'sine', .32, 42);
+  if ([0, 3, 8, 11].includes(st)) tone(t, mtof(root - 24), .2, 'triangle', .2);
+  if (layer >= 1 && st % 2 === 0) hiss(t, st % 4 === 2 ? .09 : .035, st % 4 === 2 ? .07 : .04, 7000);
+  if (layer >= 2) tone(t, mtof(root + 12 + [0, third, 7, 12, 7, third][st % 6]), .11, 'triangle', .055);
+  if (layer >= 3) { if (st === 4 || st === 12) { hiss(t, .14, .11, 1800); tone(t, 190, .08, 'triangle', .1, 120); } if (st === 0) for (const n of [0, third, 7]) tone(t, mtof(root + n), 1.9, 'sawtooth', .028, 0, 900); }
+  if (layer >= 4 && [0, 3, 6, 8, 11, 14].includes(st)) tone(t, mtof(57 + LEAD[(s >> 1) & 15]), .16, 'square', .035, 0, 2400);
+}
+function musicStart() {
+  if (!AC) return; musicStop(); nextT = AC.currentTime + .08; stepN = 0;
+  musicTimer = setInterval(() => {
+    if (!AC || muted) { nextT = AC ? AC.currentTime + .05 : 0; return; }
+    const bpm = state === 'play' && timeLeft < 20 ? 132 : 116, sd = 60 / bpm / 4;
+    while (nextT < AC.currentTime + .12) { try { musicStep(nextT, stepN, unlocked); } catch (e) {} stepN++; nextT += sd; }
+  }, 30);
+}
+function musicStop() { if (musicTimer) { clearInterval(musicTimer); musicTimer = null; } }
+
+/* ================= 연출: 충격파 · 흡입 · 히트스톱 ================= */
+const waves = [];
+for (let i = 0; i < 5; i++) { const m = new THREE.Mesh(new THREE.RingGeometry(.93, 1, 64).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.1, .4), transparent: true, opacity: 0, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -9, polygonOffsetUnits: -18 })); m.visible = false; m.renderOrder = 9; m.frustumCulled = false; scene.add(m); waves.push({ m, t: 1, r0: 1, r1: 2, d: .7 }); }
+let waveI = 0;
+function wave(x, z, r0, r1, col, d) { const w = waves[waveI++ % waves.length]; w.t = 0; w.r0 = r0; w.r1 = r1; w.d = d || .7; w.m.position.set(x, 0, z); w.m.visible = true; if (col) w.m.material.color.set(col).multiplyScalar(2.6); else w.m.material.color.setRGB(3, 1.1, .4); }
+let tweens = [], slowT = 0, boostT = 0, magT = 0, dustT = 0, spNorm = 0, introT = 0, finT = 0, fovCur = FOV;
+const INTRO = 1.7;
+function stickTo(obj, er, small) {
+  // 월드 위치를 유지한 채 공의 자식으로 옮기고, 표면까지 빨려 들어가는 트윈을 건다
+  ballPivot.position.set(P.x, P.r, P.y); ballPivot.scale.setScalar(P.r); ballPivot.updateMatrixWorld(true);
+  stuckRoot.attach(obj);
+  const p1 = obj.position.clone().normalize().multiplyScalar((.8 + Math.random() * .12) * .9);
+  const q1 = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), p1.clone().normalize()).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * 6.28));
+  tweens.push({ o: obj, p0: obj.position.clone(), q0: obj.quaternion.clone(), s0: obj.scale.x, p1, q1, s1: Math.min(.24, Math.max(.13, er / P.r * .7)) * (small ? .5 : 1), t: 0 });
+  if (stuckRoot.children.length > 34) stuckRoot.remove(stuckRoot.children[0]);
+}
+function removeEnt(e, i) {
+  ents.splice(i, 1); rings.setMatrixAt(e.idx, ZERO); rings.instanceMatrix.needsUpdate = true;
+  if (e.palm !== undefined) { palmT.setMatrixAt(e.palm, ZERO); palmF.setMatrixAt(e.palm, ZERO); palmT.instanceMatrix.needsUpdate = palmF.instanceMatrix.needsUpdate = true; }
+  else if (e.obj) entRoot.remove(e.obj);
+}
+
+/* ================= 라이벌 AI 공 ================= */
+const AIS = [['ChatGPT', 'openai', '#10A37F', '챗은 하나면 충분', .74, .21], ['Gemini', 'googlegemini', '#4E82EE', '쌍둥이자리 접수', .68, .19],
+  ['Copilot', 'githubcopilot', '#7C5CFF', '부조종사 하차', .62, .17], ['Perplexity', 'perplexity', '#20808D', '검색도 이제 내가', .56, .15]];
+const botRoot = new THREE.Group(); scene.add(botRoot);
+const BOTGEO = new THREE.SphereGeometry(1, 40, 26), BOTCAP = 125;
+let bots = [], aiEaten = [], pImm = 0;
+function botTex(slug, col) {
+  return texCache['b' + slug] || (texCache['b' + slug] = canvasTex(1024, 512, (c, w, h) => {
+    c.fillStyle = col; c.fillRect(0, 0, w, h); speckle(c, w, h, 3000, ['rgba(255,255,255,.08)', 'rgba(0,0,0,.1)'], 2, 6, 17);
+    for (const x of [170, 512, 854]) drawLogo(c, slug, x - 100, 256 - 100, 200, '#FFFFFF');
+  }));
+}
+function spawnBots() {
+  botRoot.clear(); bots = []; aiEaten = [];
+  AIS.forEach(([name, slug, color, quip, spd, grow], k) => {
+    const a = k * 1.5708 + .8, pivot = new THREE.Group(), rot = new THREE.Mesh(BOTGEO, new THREE.MeshStandardMaterial({ map: botTex(slug, color), roughness: .42, metalness: .1, envMapIntensity: 1.2 }));
+    rot.castShadow = true; pivot.add(rot);
+    const label = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 2.7 * .3125), signMat(name, slug, color)); label.position.set(0, 1.62, 0); label.rotation.x = -.25; pivot.add(label);
+    botRoot.add(pivot);
+    bots.push({ name, slug, color, quip, spd, grow, x: Math.cos(a) * 300, y: Math.sin(a) * 300, vx: 0, vy: 0, r: 11.6, tx: 0, ty: 0, think: Math.random() * .3, slow: 0, imm: 0, chase: 0, cool: 6 + k * 3, pivot, rot, label });
+  });
+}
+function updateBots(dt) {
+  if (pImm > 0) pImm -= dt;
+  for (let bi = bots.length - 1; bi >= 0; bi--) {
+    const b = bots[bi]; b.think -= dt; b.imm -= dt; b.cool -= dt; if (b.chase > 0) { b.chase -= dt; if (b.chase <= 0) b.cool = 8; }
+    const pdx = P.x - b.x, pdy = P.y - b.y, pd = Math.hypot(pdx, pdy) || .001;
+    if (b.think <= 0) {
+      b.think = .3 + Math.random() * .2;
+      if (b.slow > 1.1) { b.slow = 0; b.think = 1; const a = Math.random() * 6.283; b.tx = b.x + Math.cos(a) * b.r * 12; b.ty = b.y + Math.sin(a) * b.r * 12; }
+      else if (b.r <= P.r * EAT && pd < P.r * 5 + b.r) { b.tx = b.x - pdx / pd * 600; b.ty = b.y - pdy / pd * 600; }      // 도망
+      else if (P.r <= b.r * EAT && pd < b.r * 6 && b.cool <= 0 && pImm <= 0) { b.tx = P.x; b.ty = P.y; if (b.chase <= 0) b.chase = 3; }                                          // 추격
+      else { let best = null, bd = 1e18; for (const e of ents) { if (e.orbit || e.r > b.r * EAT || e.r < b.r * .22 || (e.co && e.tier === 4)) continue; const d = (e.x - b.x) ** 2 + (e.y - b.y) ** 2; if (d < bd) { bd = d; best = e; } }
+        if (best) { b.tx = best.x; b.ty = best.y; } else { b.tx = 0; b.ty = 0; } }
+    }
+    const tdx = b.tx - b.x, tdy = b.ty - b.y, td = Math.hypot(tdx, tdy) || 1, mv = (95 + b.r * 3.6) * b.spd, k = 1 - Math.exp(-dt * 3.5);
+    b.vx += (tdx / td * mv - b.vx) * k; b.vy += (tdy / td * mv - b.vy) * k;
+    const ox = b.x, oy = b.y; b.x += b.vx * dt; b.y += b.vy * dt;
+    const lim = WORLD_R - b.r, wd = Math.hypot(b.x, b.y); if (wd > lim) { b.x *= lim / wd; b.y *= lim / wd; }
+    const thr = b.r * EAT;
+    for (let i = ents.length - 1; i >= 0; i--) {
+      const e = ents[i], dx = b.x - e.x, dy = b.y - e.y, rs = b.r + e.r; if (dx > rs || dx < -rs || dy > rs || dy < -rs) continue;
+      const d = Math.hypot(dx, dy) || .001;
+      if (e.r <= thr && !(e.co && e.tier === 4)) { if (d < b.r + e.r * .25) { removeEnt(e, i); b.r = Math.min(BOTCAP, Math.sqrt(b.r * b.r + b.grow * e.m * e.r * e.r)); if (pd < camR * 30) burst(e); } }
+      else { const cr = e.r * (e.hard || 1); if (d < b.r + cr) { b.x = e.x + dx / d * (b.r + cr); b.y = e.y + dy / d * (b.r + cr); } }
+    }
+    const mvx = b.x - ox, mvy = b.y - oy, md = Math.hypot(mvx, mvy);
+    if (md > 1e-4) { v3.set(mvy / md, 0, -mvx / md); q4.setFromAxisAngle(v3, md / b.r); b.rot.quaternion.premultiply(q4); }
+    b.slow = md < mv * dt * .3 ? b.slow + dt : 0;
+    if (pd < P.r + b.r) {
+      if (b.r <= P.r * EAT) { if (pd < P.r + b.r * .35) { eatBot(b, bi); continue; } }
+      else {
+        const nx = pdx / pd, ny = pdy / pd; P.x = b.x + nx * (P.r + b.r); P.y = b.y + ny * (P.r + b.r);
+        if (P.r <= b.r * EAT && b.imm <= 0 && pImm <= 0) {
+          b.imm = 2.2; pImm = 6; b.chase = 0; b.cool = 10; b.think = 0; P.r = Math.max(R0, P.r * .95); b.r = Math.min(BOTCAP, b.r * 1.03); const kv = 150 + P.r * 5; P.vx = nx * kv; P.vy = ny * kv;
+          shake = .4; slowT = .12; wave(P.x, P.y, P.r, P.r * 6, b.color, .5); buzz([40, 30, 40]); blip(90, .3, 'sawtooth', .12);
+          banner('📉 ' + b.name + '에게 점유율을 뺏겼어요', '더 커져서 되갚아 주세요');
+        } else { const vn = P.vx * nx + P.vy * ny; if (vn < 0) { P.vx -= 1.6 * vn * nx; P.vy -= 1.6 * vn * ny; } }
+      }
+    }
+    b.pivot.position.set(b.x, b.r, b.y); b.pivot.scale.setScalar(b.r);
+    b.label.visible = b.r > P.r * .5;
+  }
+}
+function eatBot(b, bi) {
+  bots.splice(bi, 1); aiEaten.push(b.name);
+  P.r = Math.sqrt(P.r * P.r + GROW * b.r * b.r); eatenCount++; comboN++; comboT = 1.3;
+  notable.push({ name: b.name, color: b.color, slug: b.slug, tier: 3, r: 1e4 + b.r });
+  b.pivot.remove(b.label); botRoot.remove(b.pivot); scene.add(b.pivot); b.pivot.updateMatrixWorld(true); stickTo(b.pivot, b.r);
+  banner('🤖 ' + b.name + ' 흡수! (' + aiEaten.length + '/' + AIS.length + ')', b.quip);
+  slowT = .22; shake = .35; wave(b.x, b.y, b.r, b.r * 9, b.color, .8); buzz([30, 40, 30, 40, 60]);
+  burst({ x: b.x, y: b.y, r: b.r, color: b.color, tier: 4 });
+  [392, 523, 659, 784].forEach((f, i) => setTimeout(() => blip(f, .22, 'square', .07), i * 70));
+}
+
+/* ================= 파워업 ================= */
+const PUS = [{ k: 'speed', col: '#FFD23F', label: '⚡ 프롬프트 캐싱', sub: '6초 동안 속도 1.7배' }, { k: 'magnet', col: '#C29BFF', label: '🧲 MCP 커넥터', sub: '7초 동안 주변을 빨아들임' }, { k: 'time', col: '#5CE1FF', label: '⏱ 컨텍스트 확장', sub: '+8초 · 해가 다시 떠오름' }];
+const puRoot = new THREE.Group(); scene.add(puRoot);
+const GEM = new THREE.IcosahedronGeometry(1, 0), BEAM = new THREE.CylinderGeometry(.3, .5, 16, 14, 1, true).translate(0, 8, 0);
+let pups = [];
+function spawnPups(rnd) {
+  puRoot.clear(); pups = [];
+  [150, 270, 390, 560, 760, 980, 1250, 1550, 1900, 2300, 2700, 3100, 3500, 3850, 640, 1400].forEach((d, i) => {
+    const T = PUS[i % 3], s = 5 + d * .017;
+    let x = 0, y = 0;
+    for (let t = 0; t < 40; t++) { const a = rnd() * 6.283; x = Math.cos(a) * d; y = Math.sin(a) * d; let ok = true; for (const e of ents) if ((e.x - x) ** 2 + (e.y - y) ** 2 < (e.r + s * 2.5) ** 2) { ok = false; break; } if (ok) break; }
+    const g = new THREE.Group(), gem = new THREE.Mesh(GEM, new THREE.MeshStandardMaterial({ color: T.col, emissive: T.col, emissiveIntensity: 2.6, roughness: .2, metalness: .3, flatShading: true }));
+    gem.position.y = 1.9; gem.castShadow = true;
+    const beam = new THREE.Mesh(BEAM, new THREE.MeshBasicMaterial({ color: new THREE.Color(T.col).multiplyScalar(1.6), transparent: true, opacity: .22, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
+    const halo = new THREE.Mesh(new THREE.RingGeometry(1.5, 1.9, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(T.col).multiplyScalar(2.2), transparent: true, opacity: .8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -8, polygonOffsetUnits: -16 }));
+    g.add(gem, beam, halo); g.position.set(x, 0, y); g.scale.setScalar(s); puRoot.add(g);
+    pups.push({ x, y, s, T, g, gem, ph: rnd() * 6 });
+  });
+}
+function updatePups(dt, now) {
+  for (let i = pups.length - 1; i >= 0; i--) {
+    const p = pups[i]; p.gem.rotation.y += dt * 2.2; p.gem.rotation.x += dt * .7; p.gem.position.y = 1.9 + Math.sin(now / 350 + p.ph) * .35;
+    if ((p.x - P.x) ** 2 + (p.y - P.y) ** 2 > (P.r + p.s * 1.7) ** 2) continue;
+    pups.splice(i, 1); puRoot.remove(p.g);
+    if (p.T.k === 'speed') boostT = 6; else if (p.T.k === 'magnet') magT = 7; else timeLeft = Math.min(GAME_TIME, timeLeft + 8);
+    banner(p.T.label, p.T.sub); wave(p.x, p.y, p.s, Math.max(p.s * 8, P.r * 5), p.T.col, .6); buzz(25);
+    [660, 880, 1320].forEach((f, k) => setTimeout(() => blip(f, .14, 'sine', .09), k * 60));
+  }
+}
+
 /* ================= 게임 로직 ================= */
 function update(dt) {
   let ix = input.dx, iy = input.dy;
@@ -551,20 +755,25 @@ function update(dt) {
   if (keys.ArrowUp || keys.w) iy -= 1; if (keys.ArrowDown || keys.s) iy += 1;
   const il = Math.hypot(ix, iy); if (il > 1) { ix /= il; iy /= il; }
   if (il > .2 && !moved) { moved = true; $('hint').style.display = 'none'; }
-  const maxV = 95 + P.r * 3.6, k = 1 - Math.exp(-dt * (il > 0.05 ? 5 : 3));
+  const maxV = (95 + P.r * 3.6) * (boostT > 0 ? 1.7 : 1), k = 1 - Math.exp(-dt * (il > 0.05 ? 5 : 3));
+  if (boostT > 0) boostT -= dt; if (magT > 0) magT -= dt;
   P.vx += (ix * maxV - P.vx) * k; P.vy += (iy * maxV - P.vy) * k;
   P.x += P.vx * dt; P.y += P.vy * dt;
   const sp = Math.hypot(P.vx, P.vy);
   if (sp > .01) { v3.set(P.vy / sp, 0, -P.vx / sp); q4.setFromAxisAngle(v3, sp * dt / P.r); ball.quaternion.premultiply(q4); }
   const pd = Math.hypot(P.x, P.y), lim = WORLD_R - P.r;
   if (pd > lim) { P.x *= lim / pd; P.y *= lim / pd; }
+  spNorm = sp / (95 + P.r * 3.6);
+  dustT -= dt;
+  if (spNorm > .55 && dustT <= 0) { dustT = boostT > 0 ? .02 : .05; const q = pdata[pcur]; q.life = .45; q.x = P.x - P.vx / sp * P.r * .7 + (Math.random() - .5) * P.r; q.z = P.y - P.vy / sp * P.r * .7 + (Math.random() - .5) * P.r; q.y = 0; q.vx = -P.vx * .12; q.vz = -P.vy * .12; q.vy = P.r * (1.5 + Math.random() * 2); q.s = P.r * (.07 + Math.random() * .07); parts.setColorAt(pcur, tmpC.set(boostT > 0 ? '#FFD23F' : '#C9BEAA')); parts.instanceColor.needsUpdate = true; pcur = (pcur + 1) % PN; }
 
   const thr = P.r * EAT; let ringDirty = false;
   for (let i = ents.length - 1; i >= 0; i--) {
     const e = ents[i];
     const ed = e.r <= thr;
     if (e.orbit) { const o = e.orbit; o.ang += o.w * dt; e.x = Math.cos(o.ang) * o.rad; e.y = Math.sin(o.ang) * o.rad; e.obj.position.x = e.x; e.obj.position.z = e.y; e.obj.rotation.y = -(o.ang + 1.5708) + (o.w < 0 ? Math.PI : 0); }
-    if (ed !== e.ed || (ed && e.orbit)) { e.ed = ed; m4.makeScale(e.r, e.r, e.r).setPosition(e.x, 0, e.y); rings.setMatrixAt(e.idx, ed ? m4 : ZERO); ringDirty = true; }
+    if (magT > 0 && ed && e.obj && !e.orbit) { const mx = P.x - e.x, my = P.y - e.y, md = Math.hypot(mx, my); if (md < P.r * 7 + 40 && md > 1) { const pull = Math.min(md, (P.r * 5 + 70) * dt); e.x += mx / md * pull; e.y += my / md * pull; e.obj.position.x = e.x; e.obj.position.z = e.y; e.mv = true; } }
+    if (ed !== e.ed || (ed && (e.orbit || e.mv))) { e.ed = ed; m4.makeScale(e.r, e.r, e.r).setPosition(e.x, 0, e.y); rings.setMatrixAt(e.idx, ed ? m4 : ZERO); ringDirty = true; }
     if (e.obj) {
       if (e.tw > 0) { e.tw -= dt; e.obj.rotation.z = e.tw > 0 ? Math.sin(e.tw * 45) * .06 : 0; }
       if (e.hop > 0) { e.hop -= dt; const t = Math.max(0, e.hop) / .5; e.obj.position.y = t < 1 ? Math.sin(t * Math.PI) * e.r * .4 : 0; }
@@ -589,9 +798,10 @@ function update(dt) {
   if (ringDirty) rings.instanceMatrix.needsUpdate = true;
 
   while (unlocked < 4 && P.r * EAT >= TIERS[unlocked + 1].rmin) {
-    unlocked++; banner('🔓 ' + TIERS[unlocked].name + ' 인수 가능!'); blip(520, 0.35, 'sine', 0.1); buzz(30);
+    unlocked++; banner('🔓 ' + TIERS[unlocked].name + ' 인수 가능!', '음악이 한 겹 더 쌓였어요'); blip(520, 0.35, 'sine', 0.1); buzz(30); wave(P.x, P.y, P.r, P.r * 14, null, .9); slowT = .1;
     for (const e of ents) if (e.tier === unlocked) e.hop = .5 + Math.random() * .5;
   }
+  updateBots(dt); updatePups(dt, performance.now());
   if (comboT > 0) { comboT -= dt; if (comboT <= 0) { comboN = 0; $('combo').classList.remove('on'); } }
   shake = Math.max(0, shake - dt);
   timeLeft -= dt;
@@ -609,19 +819,13 @@ function eat(e, i) {
   if (e.palm !== undefined) { palmT.setMatrixAt(e.palm, ZERO); palmF.setMatrixAt(e.palm, ZERO); palmT.instanceMatrix.needsUpdate = palmF.instanceMatrix.needsUpdate = true;
     e.obj = buildPalm(); e.obj.position.set(e.x, 0, e.y); e.obj.scale.setScalar(e.r); e.obj.rotation.y = e.ry; entRoot.add(e.obj); }
   e.obj.visible = true; e.obj.rotation.z = 0; e.obj.position.y = 0;
-  ballPivot.position.set(P.x, P.r, P.y); ballPivot.scale.setScalar(P.r); ballPivot.updateMatrixWorld(true);
-  stuckRoot.attach(e.obj);
-  e.obj.position.normalize().multiplyScalar(.8 + Math.random() * .12);
-  e.obj.scale.setScalar(Math.min(.24, Math.max(.13, e.r / P.r * .7)) * (e.palm !== undefined ? .5 : 1));
-  qI.setFromUnitVectors(v3.set(0, 1, 0), s3.copy(e.obj.position).normalize()); e.obj.quaternion.copy(qI); e.obj.rotateY(Math.random() * 6.28);
-  e.obj.position.multiplyScalar(.9);
-  if (stuckRoot.children.length > 34) stuckRoot.remove(stuckRoot.children[0]);
+  stickTo(e.obj, e.r, e.palm !== undefined);
 
   comboN++; comboT = 1.3; if (comboN > maxCombo) maxCombo = comboN;
   if (comboN >= 5) { const c = $('combo'); $('combon').textContent = '×' + comboN; c.classList.add('on'); c.style.transform = 'scale(' + Math.min(1.5, 1 + comboN * .012) + ')'; }
   if (e.co && e.tier >= unlocked - 1) pop(e.x, e.r * 2.2, e.y, e.name + ' ' + VERBS[(Math.random() * VERBS.length) | 0], e.tier >= 3 ? 'big' : '');
   if (e.co && e.tier >= 2) notable.push(e);
-  if (e.co && e.tier === 4) { bigEaten.push(e.name); const q = T4.find(c => c[0] === e.name); banner(e.name + ' 인수 완료 (' + bigEaten.length + '/' + bigTotal + ')', q && q[3]); buzz([20, 30, 40]); shake = .2; }
+  if (e.co && e.tier === 4) { bigEaten.push(e.name); const q = T4.find(c => c[0] === e.name); banner(e.name + ' 인수 완료 (' + bigEaten.length + '/' + bigTotal + ')', q && q[3]); buzz([20, 30, 40]); shake = .3; slowT = .16; wave(e.x, e.y, e.r, e.r * 7, e.color, .8); }
   burst(e);
   blip((330 + e.tier * 90) * Math.pow(1.035, Math.min(comboN, 24)) + Math.random() * 20, 0.09 + e.tier * 0.03, 'triangle', 0.07);
 }
@@ -644,8 +848,8 @@ function shareText() {
   const r = result, row = ['🚀', '☁️', '🏢', '🏙️', '🌍'].map((e, i) => (i < 4 ? r.unlocked > i : r.win) ? e : '▫️').join('');
   const names = r.names.slice(0, 3).join(', ');
   return r.win
-    ? `클로드혼 #${DAY} 🟠\n${r.sec}초 만에 ${names} 포함 ${r.count}곳을 전부 굴려 먹음.\n기업가치 ${fmtMoney(r.worth)} · ${r.rank}\n${row}\n\n너는 몇 초 걸려?`
-    : `클로드혼 #${DAY} 🟠\n제한 시간 동안 ${names ? names + ' 포함 ' : ''}${r.count}곳 인수, 기업가치 ${fmtMoney(r.worth)}.\n빅테크 ${r.big}/${r.bigTotal}에서 타임오버 · ${r.rank}\n${row}\n\n나보다 많이 먹을 수 있어?`;
+    ? `클로드혼 #${DAY} 🟠\n${r.sec}초 만에 ${names} 포함 ${r.count}곳을 전부 굴려 먹음.\n기업가치 ${fmtMoney(r.worth)} · 라이벌 AI ${r.ai}/${AIS.length} 흡수\n${row}\n\n너는 몇 초 걸려?`
+    : `클로드혼 #${DAY} 🟠\n제한 시간 동안 ${names ? names + ' 포함 ' : ''}${r.count}곳 인수, 기업가치 ${fmtMoney(r.worth)}.\n빅테크 ${r.big}/${r.bigTotal} · 라이벌 AI ${r.ai}/${AIS.length} · ${r.rank}\n${row}\n\n나보다 많이 먹을 수 있어?`;
 }
 function drawCard() {
   const r = result, c = document.createElement('canvas'); c.width = 1080; c.height = 1350; const x = c.getContext('2d');
@@ -676,7 +880,7 @@ function drawCard() {
   x.font = '800 40px ' + FONT; x.fillStyle = '#6B6860'; x.fillText(r.win ? r.sec + '초 만에 전 산업 인수 완료' : '타임오버 · 빅테크 ' + r.big + '/' + r.bigTotal, 540, 740);
   x.font = '900 84px ' + FONT; x.fillStyle = '#1F1E1D'; x.fillText(r.rank, 540, 836);
   x.font = '900 150px ' + FONT; x.fillStyle = '#B85C3E'; x.fillText(fmtMoney(r.worth), 540, 990);
-  x.font = '700 36px ' + FONT; x.fillStyle = '#6B6860'; x.fillText('총 ' + r.count + '건 인수  ·  최대 콤보 ×' + r.combo, 540, 1096);
+  x.font = '700 33px ' + FONT; x.fillStyle = '#6B6860'; x.fillText('총 ' + r.count + '건 인수  ·  콤보 ×' + r.combo + '  ·  라이벌 AI ' + r.ai + '/' + AIS.length, 540, 1096);
   // 티어 진행
   const labs = ['스타트업', 'SaaS', '엔터프라이즈', '빅테크', '전부'];
   labs.forEach((l, i) => { const on = i < 4 ? r.unlocked > i : r.win, bx = 100 + i * 180; x.fillStyle = on ? '#D97757' : '#E7E2D3'; rr(x, bx, 1150, 164, 60, 30); x.fill(); x.fillStyle = on ? '#fff' : '#A8A397'; x.font = '800 26px ' + FONT; x.fillText(l, bx + 82, 1182); });
@@ -684,11 +888,12 @@ function drawCard() {
   return c;
 }
 function end(win) {
-  state = 'over'; up();
+  state = 'over'; up(); musicStop(); finT = 0; boostT = magT = 0;
+  if (!win) cv.style.filter = 'grayscale(.75) brightness(.8)';
   const r = P.r;
   const rank = win ? '특이점 도달' : r < 40 ? '시드 단계 챗봇' : r < 90 ? '시리즈 A 유망주' : r < 170 ? 'SaaS 포식자' : r < 300 ? '빅테크의 악몽' : '거의 다 먹은 자';
   notable.sort((a, b) => b.r - a.r);
-  result = { win, sec: Math.max(1, Math.round(GAME_TIME - timeLeft)), worth: worth(), count: eatenCount, big: bigEaten.length, bigTotal, rank, unlocked, combo: maxCombo,
+  result = { win, sec: Math.max(1, Math.round(GAME_TIME - timeLeft)), worth: worth(), count: eatenCount, big: bigEaten.length, bigTotal, rank, unlocked, combo: maxCombo, ai: aiEaten.length,
     names: notable.slice(0, 6).map(e => e.name), tiles: notable.slice(0, 16).reverse().map(e => ({ name: e.name, color: e.color, tier: e.tier, slug: e.slug })) };
   const isBest = scoreOf(result) > scoreOf(bestRec);
   if (isBest) { bestRec = { win, sec: result.sec, worth: result.worth }; try { localStorage.setItem('claudehon_best', JSON.stringify(bestRec)); } catch (e) {} }
@@ -697,7 +902,7 @@ function end(win) {
   const card = drawCard(); cardBlob = null;
   $('cardimg').src = card.toDataURL('image/png');
   card.toBlob(b => { cardBlob = b; }, 'image/png');
-  setTimeout(() => { $('hud').style.display = 'none'; $('radar').style.display = 'none'; $('combo').classList.remove('on'); $('over').style.display = 'flex'; if (rival && scoreOf(result) > scoreOf(rival)) toast('친구 기록을 이겼어요 🎉'); }, 1300);
+  setTimeout(() => { $('hud').style.display = 'none'; $('radar').style.display = 'none'; $('combo').classList.remove('on'); $('over').style.display = 'flex'; if (rival && scoreOf(result) > scoreOf(rival)) toast('친구 기록을 이겼어요 🎉'); }, win ? 3200 : 1500);
 }
 const cardFile = () => cardBlob ? new File([cardBlob], 'claudehon-' + DAY + '.png', { type: 'image/png' }) : null;
 async function copyText(t) { try { await navigator.clipboard.writeText(t); return true; } catch (e) { const a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (_) {} a.remove(); return ok; } }
@@ -727,6 +932,7 @@ function hud() {
     $('nextname').textContent = '다음 해금: ' + TIERS[unlocked + 1].name;
     $('barfill').style.width = Math.max(0, Math.min(100, (P.r - prev) / (need - prev) * 100)) + '%';
   } else { $('nextname').textContent = '빅테크 ' + bigEaten.length + '/' + bigTotal + ' 인수'; $('barfill').style.width = (bigEaten.length / bigTotal * 100) + '%'; }
+  $('buffs').innerHTML = (boostT > 0 ? '<span style="background:#FFD23F;color:#222">⚡ ' + Math.ceil(boostT) + '</span>' : '') + (magT > 0 ? '<span style="background:#C29BFF;color:#222">🧲 ' + Math.ceil(magT) + '</span>' : '');
   radar();
 }
 /* 미니맵 */
@@ -747,29 +953,47 @@ function radar() {
     c.beginPath(); c.arc(dx, dy, s, 0, 6.3); c.fill();
     if (big) { c.strokeStyle = e.ed ? '#FF8A5C' : e.color; c.lineWidth = 2.5; c.stroke(); }
   }
+  for (const p of pups) { const dx = (p.x - P.x) * k, dy = (p.y - P.y) * k; if (Math.hypot(dx, dy) > R - 4) continue; c.fillStyle = p.T.col; c.beginPath(); c.moveTo(dx, dy - 5); c.lineTo(dx + 4, dy); c.lineTo(dx, dy + 5); c.lineTo(dx - 4, dy); c.fill(); }
+  for (const b of bots) { let dx = (b.x - P.x) * k, dy = (b.y - P.y) * k; const d = Math.hypot(dx, dy); if (d > R - 8) { dx *= (R - 8) / d; dy *= (R - 8) / d; }
+    const danger = P.r <= b.r * EAT; c.fillStyle = b.color; c.strokeStyle = danger ? '#FF3B30' : '#fff'; c.lineWidth = danger ? 4 : 2.5; c.beginPath(); c.arc(dx, dy, Math.max(6, b.r * k), 0, 6.3); c.fill(); c.stroke(); }
   c.fillStyle = '#FF7A45'; c.strokeStyle = '#fff'; c.lineWidth = 2.5; c.beginPath(); c.arc(0, 0, Math.max(5, P.r * k), 0, 6.3); c.fill(); c.stroke();
   c.restore(); c.beginPath(); c.arc(S / 2, S / 2, R, 0, 6.3); c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = 4; c.stroke();
 }
 
-const TAN = Math.tan(FOV * Math.PI / 360);
+const TAN = Math.tan(FOV * Math.PI / 360), cA = new THREE.Vector3(), cB = new THREE.Vector3(), lA = new THREE.Vector3(), lB = new THREE.Vector3();
 let lodT = 0, menuA = 0;
 function render(dt, now) {
   camR += (P.r - camR) * (1 - Math.exp(-dt * 2.2));
   const f = 1 - Math.exp(-dt * 8); camX += (P.x - camX) * f; camZ += (P.y - camZ) * f;
   ballPivot.position.set(P.x, P.r, P.y); ballPivot.scale.setScalar(P.r);
-  const menu = state === 'menu', vr = menu ? 34 : camR;
+  const menu = state === 'menu', ik = menu ? 0 : state === 'intro' ? 1 - Math.pow(Math.max(0, introT) / INTRO, 2.4) : 1, vr = 34 + (camR - 34) * ik;
+  applyTod(menu ? .66 : state === 'intro' ? 0 : 1 - timeLeft / GAME_TIME, dt);
   const dist = vr / (0.085 * 2 * TAN * Math.min(camera.aspect, 1));
   const V = 70 * vr + 1700;                       // 가시 거리
   const sh = shake > 0 ? shake * vr * 1.4 : 0, sx = (Math.random() - .5) * sh, sy = (Math.random() - .5) * sh * .6;
-  if (menu) { menuA += dt * .06; camera.position.set(Math.sin(menuA) * 760, 150, Math.cos(menuA) * 760); camera.lookAt(0, 95, 0); }
-  else { camera.position.set(camX + sx, dist * .41 + sy, camZ + dist * .91); camera.lookAt(camX + sx, vr * .8, camZ - vr * 9); }
+  menuA += dt * .06 * (1 - ik);
+  cA.set(Math.sin(menuA) * 760, 150, Math.cos(menuA) * 760); lA.set(0, 95, 0);
+  const gd = camR / (0.085 * 2 * TAN * Math.min(camera.aspect, 1));
+  if (state === 'over' && result && result.win) {
+    finT += dt; const fk = Math.min(1, finT / 2.4), fe = 1 - Math.pow(1 - fk, 3), fa = finT * .5;
+    ballPivot.position.y = P.r * (1 + fe * 2.6); q4.setFromAxisAngle(v3.set(0, 1, 0), dt * 3); ball.quaternion.premultiply(q4);
+    cB.set(camX + Math.sin(fa) * gd * (.91 + fe * .3), gd * (.41 + fe * .1), camZ + Math.cos(fa) * gd * (.91 + fe * .3)); lB.set(camX, P.r * (1 + fe * 2.6), camZ);
+    if (Math.random() < .7) { const q = pdata[pcur], a = Math.random() * 6.283, sp2 = P.r * (2 + Math.random() * 5); q.life = 1.1; q.x = P.x; q.z = P.y; q.y = ballPivot.position.y; q.vx = Math.cos(a) * sp2; q.vz = Math.sin(a) * sp2; q.vy = P.r * (4 + Math.random() * 7); q.s = P.r * (.08 + Math.random() * .1); parts.setColorAt(pcur, tmpC.setHSL(Math.random(), .9, .6)); parts.instanceColor.needsUpdate = true; pcur = (pcur + 1) % PN; }
+    if (finT - dt < .05 && finT >= .05 || finT - dt < .7 && finT >= .7 || finT - dt < 1.4 && finT >= 1.4) wave(P.x, P.y, P.r, P.r * 16, null, 1.1);
+  } else { cB.set(camX + sx, gd * .41 + sy, camZ + gd * .91); lB.set(camX + sx, camR * .8, camZ - camR * 9); }
+  camera.position.lerpVectors(cA, cB, ik); lA.lerp(lB, ik); camera.lookAt(lA);
+  fovCur += (FOV + Math.min(1.2, spNorm) * 3 + (boostT > 0 ? 8 : 0) - fovCur) * (1 - Math.exp(-dt * 4)); camera.fov = menu ? FOV : fovCur;
+  ballLamp.position.set(P.x, P.r * 2.6, P.y + P.r * 1.5); ballLamp.distance = camR * 22;
+  waterN.offset.x += dt * .012; waterN.offset.y += dt * .007;
+  for (let i = tweens.length - 1; i >= 0; i--) { const w = tweens[i]; w.t = Math.min(1, w.t + dt / .22); const e2 = 1 - Math.pow(1 - w.t, 3); w.o.position.lerpVectors(w.p0, w.p1, e2); w.o.quaternion.slerpQuaternions(w.q0, w.q1, e2); w.o.scale.setScalar(w.s0 + (w.s1 - w.s0) * e2); if (w.t >= 1) tweens.splice(i, 1); }
+  for (const w of waves) { if (w.t >= 1) continue; w.t = Math.min(1, w.t + dt / w.d); const e2 = 1 - Math.pow(1 - w.t, 2); w.m.scale.setScalar(w.r0 + (w.r1 - w.r0) * e2); w.m.material.opacity = (1 - w.t) * .6; if (w.t >= 1) w.m.visible = false; }
   camera.near = Math.max(.5, dist * .05); camera.far = V * 2.2; camera.updateProjectionMatrix();
   scene.fog.density = 0.55 / V;
   dome.position.copy(camera.position); dome.scale.setScalar(camera.far * .9);
   clouds.position.copy(camera.position); clouds.scale.setScalar(camera.far * .8);
   // 그림자: 공 주변을 따라다니는 태양
-  const S = vr * (menu ? 24 : 30), tx = menu ? 0 : camX, tz = menu ? 0 : camZ - vr * 8;
-  sun.target.position.set(tx, 0, tz); sun.position.set(tx + SUN.x * S * 3, SUN.y * S * 3, tz + SUN.z * S * 3);
+  const S = vr * (24 + 6 * ik), tx = camX * ik, tz = (camZ - vr * 8) * ik;
+  sun.target.position.set(tx, 0, tz); sun.position.set(tx + LDIR.x * S * 3, LDIR.y * S * 3, tz + LDIR.z * S * 3);
   const sc = sun.shadow.camera; sc.left = -S; sc.right = S; sc.top = S; sc.bottom = -S; sc.near = S * .2; sc.far = S * 7; sc.updateProjectionMatrix();
   sun.shadow.normalBias = S / sun.shadow.mapSize.x * 3;
   // 멀리 있는 작은 물체는 그리지 않음
@@ -790,7 +1014,9 @@ function render(dt, now) {
 }
 let last = 0, hudT = 0, perfN = 0, perfSum = 0;
 function frame(now) {
-  const raw = (now - last) / 1000 || 0, dt = Math.min(0.05, raw); last = now;
+  const raw = (now - last) / 1000 || 0; let dt = Math.min(0.05, raw); last = now;
+  if (slowT > 0) { slowT -= dt; dt *= .12; }
+  if (state === 'intro') { introT -= dt; if (introT <= 0) { state = 'play'; banner('굴려라!'); $('hint').style.display = 'block'; } }
   if (state === 'play') {
     update(dt); hudT += dt; if (hudT > 0.12 && state === 'play') { hudT = 0; hud(); }
     // 느린 기기에서는 화질을 한 단계씩 낮춤
@@ -804,11 +1030,9 @@ function frame(now) {
 }
 
 function start() {
-  if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
-  if (AC && AC.state === 'suspended') AC.resume();
-  build(); state = 'play'; up(); popLayer.innerHTML = ''; perfN = 0; perfSum = 0;
-  $('start').style.display = 'none'; $('over').style.display = 'none'; $('hud').style.display = 'block'; $('radar').style.display = 'block'; $('hint').style.display = 'block'; hud();
-  banner('굴려라!');
+  audioInit(); build(); state = 'intro'; introT = INTRO; cv.style.filter = ''; up(); popLayer.innerHTML = ''; perfN = 0; perfSum = 0; musicStart();
+  $('start').style.display = 'none'; $('over').style.display = 'none'; $('hud').style.display = 'block'; $('radar').style.display = 'block'; hud();
+  banner('오늘의 맵 #' + DAY, '해 지기 전에 전부 인수하세요');
 }
 $('go').addEventListener('click', start); $('again').addEventListener('click', start);
 
@@ -819,9 +1043,10 @@ if (bestRec) $('bestline').textContent = '내 최고 기록 · ' + recText(bestR
 for (let i = 0; i < PN; i++) parts.setMatrixAt(i, ZERO);
 if (qs.get('q')) setQuality(+qs.get('q'));
 build();
+applyTod(.66, 10);
 renderer.compile(scene, camera);
 $('loading').style.display = 'none';
 // 디버그·자동 테스트용
-window.__game = { get P() { return P; }, get ents() { return ents; }, get state() { return state; }, input, set time(v) { timeLeft = v; }, get info() { return renderer.info.render; }, get quality() { return quality; },
+window.__game = { get P() { return P; }, get ents() { return ents; }, get state() { return state; }, input, set time(v) { timeLeft = v; }, get info() { return renderer.info.render; }, get quality() { return quality; }, get bots() { return bots; }, get cam() { return { p: camera.position.toArray().map(Math.round), d: camera.getWorldDirection(new THREE.Vector3()).toArray().map(v => +v.toFixed(2)), fov: camera.fov, intro: introT, camR }; }, frame(dt) { if (state === 'intro') { introT -= dt; if (introT <= 0) state = 'play'; } render(dt, performance.now()); }, get left() { return timeLeft; }, get ai() { return aiEaten.length; }, sim(dt) { if (state === 'intro') { introT = 0; state = 'play'; } if (state === 'play') update(dt); }, get tod() { return todCur; },
   shot(w, h) { const pw = W, ph = H; renderer.setPixelRatio(1); renderer.setSize(w, h, false); composer.setPixelRatio(1); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); render(0, performance.now()); const u = cv.toDataURL('image/png'); resize(); return u; } };
 requestAnimationFrame(frame);
