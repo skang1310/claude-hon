@@ -39,7 +39,7 @@ const TIERS = [
   { name:'엔터프라이즈', rmin:75,  rmax:115, d0:1300, d1:2950 },
   { name:'빅테크',       rmin:170, rmax:250, d0:2500, d1:4000 },
 ];
-const WORLD_R = 4400, EAT = 0.9, GROW = 0.25, GAME_TIME = 130, R0 = 12;
+const WORLD_R = 4400, EAT = 0.9, GROW = 0.22, GAME_TIME = 150, R0 = 12;
 const ROADS = [{ R: 470, w: 40 }, { R: 1050, w: 76 }, { R: 2000, w: 136 }, { R: 3300, w: 230 }];
 const SPOKES = 8, SPOKE0 = 0.39;
 const spokeW = d => d < 1050 ? 44 : d < 2000 ? 80 : 140;
@@ -492,7 +492,7 @@ function build() {
   for (let i = 0; i < MAXE; i++) rings.setMatrixAt(i, ZERO);
   rings.instanceMatrix.needsUpdate = true;
   P = { x: 0, y: 0, vx: 0, vy: 0, r: R0 };
-  spawnBots(); pImm = 0; spawnPups(rnd); tweens = []; boostT = magT = slowT = finT = dashT = dashCd = feverT = 0; feverNext = 35; mission = null; missionCd = 12; missionsDone = 0; mark.visible = false;
+  resetRogue(); spawnBots(); pImm = 0; spawnPups(rnd); tweens = []; boostT = magT = slowT = finT = dashT = dashCd = feverT = 0; feverNext = 35; mission = null; missionCd = 12; missionsDone = 0; mark.visible = false;
   ball.quaternion.identity();
   camR = R0; camX = 0; camZ = 0;
   timeLeft = GAME_TIME; eatenCount = 0; unlocked = 0; shake = 0; lastBumpMsg = 0; bigEaten = []; notable = []; comboN = 0; comboT = 0; maxCombo = 0; moved = false;
@@ -530,7 +530,7 @@ function fmtMoney(v) {
 }
 const worth = () => 1e4 * Math.pow(P.r / R0, 6);
 let bannerT = null;
-function banner(txt, sub) { const b = $('banner'); b.children[0].textContent = txt; b.children[1].textContent = sub || ''; b.classList.add('on'); clearTimeout(bannerT); bannerT = setTimeout(() => b.classList.remove('on'), 1800); }
+function banner(txt, sub, cls) { const b = $('banner'); b.classList.toggle('gta', cls === 'gta'); b.classList.toggle('wasted', cls === 'wasted'); b.children[0].textContent = txt; b.children[1].textContent = sub || ''; b.classList.add('on'); clearTimeout(bannerT); bannerT = setTimeout(() => b.classList.remove('on'), 1800); }
 let toastT = null;
 function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), 1800); }
 const popLayer = $('pops');
@@ -694,7 +694,7 @@ function updateBots(dt) {
     if (md > 1e-4) { v3.set(mvy / md, 0, -mvx / md); q4.setFromAxisAngle(v3, md / b.r); b.rot.quaternion.premultiply(q4); }
     b.slow = md < mv * dt * .3 ? b.slow + dt : 0;
     if (pd < P.r + b.r) {
-      if (b.r <= P.r * (dashT > 0 ? .98 : EAT)) { if (pd < P.r + b.r * .35) { eatBot(b, bi); continue; } }
+      if (b.r <= P.r * eatK()) { if (pd < P.r + b.r * .35) { eatBot(b, bi); continue; } }
       else {
         const nx = pdx / pd, ny = pdy / pd; P.x = b.x + nx * (P.r + b.r); P.y = b.y + ny * (P.r + b.r);
         if (dashT > 0) {                                   // 돌진으로 받아치기
@@ -779,7 +779,7 @@ function dash() {
   let dx = input.dx, dy = input.dy; if (keys.ArrowLeft || keys.a) dx -= 1; if (keys.ArrowRight || keys.d) dx += 1; if (keys.ArrowUp || keys.w) dy -= 1; if (keys.ArrowDown || keys.s) dy += 1;
   let l = Math.hypot(dx, dy); if (l < .2) { dx = P.vx; dy = P.vy; l = Math.hypot(dx, dy); } if (l < .01) { dx = 0; dy = -1; l = 1; }
   const v = (95 + P.r * 3.6) * 2.5; P.vx = dx / l * v; P.vy = dy / l * v;
-  dashT = .7; dashCd = DASH_CD; wave(P.x, P.y, P.r, P.r * 4, '#FFB37A', .4); buzz(20);
+  dashT = .7; dashCd = DASH_CD - (upg.haiku || 0); wave(P.x, P.y, P.r, P.r * 4, '#FFB37A', .4); buzz(20);
   if (AC && !muted) { try { hiss(AC.currentTime, .35, .16, 900); tone(AC.currentTime, 180, .3, 'sawtooth', .09, 700, 2600); } catch (e) {} }
 }
 $('dash').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); dash(); });
@@ -807,6 +807,112 @@ function updateMission(dt, now) {
   mission = { e, t: 16 }; mark.visible = true; banner('🎯 긴급 인수: ' + e.name, '16초 안에 먹으면 +3초'); blip(880, .12, 'square', .07); setTimeout(() => blip(880, .12, 'square', .07), 140);
 }
 
+
+/* ================= 로그라이크: 토큰 · 레벨업 · 자동 무기 · 단속반 ================= */
+const UPG = [
+  { id: 'orbit', ic: '🛰️', n: '서브에이전트', d: '주위를 도는 미니 Claude +1. 작은 건 먹고 큰 건물은 깎아요', max: 4 },
+  { id: 'pulse', ic: '💥', n: '아티팩트 충격파', d: '주기적으로 단속반을 날리고 주변 건물을 깎아요', max: 4 },
+  { id: 'bolt', ic: '🔧', n: '툴 유즈', d: '가까운 단속반을 자동으로 요격해요', max: 4 },
+  { id: 'speed', ic: '⚡', n: '프롬프트 캐싱', d: '이동 속도 +10%', max: 4 },
+  { id: 'magnet', ic: '🧲', n: 'MCP 커넥터', d: '토큰을 끌어오는 범위 +70%', max: 3 },
+  { id: 'grow', ic: '📦', n: '배치 API', d: '먹을 때 성장량 +12%', max: 4 },
+  { id: 'ctx', ic: '🪟', n: '컨텍스트 윈도우', d: '지금보다 4% 더 큰 것도 삼켜요', max: 3 },
+  { id: 'armor', ic: '🛡️', n: '헌법적 AI', d: '단속반 과징금 피해 -25%', max: 3 },
+  { id: 'haiku', ic: '🍃', n: '하이쿠 모드', d: '돌진 쿨타임 -1초', max: 3 },
+  { id: 'xp', ic: '🧠', n: '확장 사고', d: '토큰 경험치 +25%', max: 3 },
+];
+let peakR = 0, upg = { orbit: 1 }, lvl = 1, xp = 0, kills = 0, hitImm = 0, cops = [], copT = 7, bolts = [], boltT = 0, pulseT = 3, orbA = 0, toks = [], choices = [];
+const OX = [0, 0, 0, 0], OY = [0, 0, 0, 0];
+const eatK = () => EAT + .04 * (upg.ctx || 0) + (dashT > 0 ? .08 : 0);
+const need = () => 7 + lvl * 7;
+const MAXC = 90, MAXT = 160, MAXB = 24;
+const copBody = new THREE.InstancedMesh(CAR.body, std('#F2F2EE', .35, .3), MAXC), copCab = new THREE.InstancedMesh(CAR.cabin, MAT.glass, MAXC), copWheel = new THREE.InstancedMesh(CAR.wheels, MAT.tire, MAXC),
+  copTrim = new THREE.InstancedMesh(mergeGeometries([bx(.5, .05, .72, -.14, .935, 0), bx(.62, .3, .84, .1, .4, 0)]), std('#16181C', .4, .3), MAXC),
+  copBar = new THREE.InstancedMesh(bx(.12, .1, .6, -.14, 1.01, 0), new THREE.MeshBasicMaterial({ color: '#FFFFFF' }), MAXC);
+const tokMesh = new THREE.InstancedMesh(new THREE.OctahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: '#8FF0FF', emissive: '#2FD0FF', emissiveIntensity: 2.4, roughness: .25, flatShading: true }), MAXT);
+const boltMesh = new THREE.InstancedMesh(SPH, new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 1.3, .4) }), MAXB);
+for (const m of [copBody, copCab, copWheel, copTrim, copBar, tokMesh, boltMesh]) { m.frustumCulled = false; m.count = 0; scene.add(m); }
+copBody.castShadow = true; for (let i = 0; i < MAXC; i++) copBar.setColorAt(i, tmpC.set('#fff'));
+const orbs = []; for (let k = 0; k < 4; k++) { const m = new THREE.Mesh(BOTGEO, ballMesh.material); m.castShadow = true; m.visible = false; scene.add(m); orbs.push(m); }
+const YAX = new THREE.Vector3(0, 1, 0);
+function resetRogue() { peakR = 0; upg = { orbit: 1 }; lvl = 1; xp = 0; kills = 0; hitImm = 0; cops = []; toks = []; bolts = []; copT = 7; pulseT = 3; boltT = 0; choices = []; copBody.count = copCab.count = copWheel.count = copTrim.count = copBar.count = tokMesh.count = boltMesh.count = 0; for (const o of orbs) o.visible = false; $('levelup').style.display = 'none'; }
+function gainXp(v) { xp += v * (1 + .25 * (upg.xp || 0)); if (xp >= need() && state === 'play') { xp -= need(); lvl++; levelUp(); } }
+function levelUp() {
+  const pool = UPG.filter(u => (upg[u.id] || 0) < u.max); for (let i = pool.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  choices = pool.slice(0, 3); if (!choices.length) { timeLeft = Math.min(GAME_TIME, timeLeft + 2); return; }
+  state = 'levelup'; up();
+  $('lvtitle').textContent = 'LEVEL ' + lvl;
+  $('lvcards').innerHTML = choices.map((u, i) => `<button class="upg" data-i="${i}"><span class="ic">${u.ic}</span><span class="tx"><b>${u.n}</b><small>${u.d}</small></span><i>${upg[u.id] ? 'Lv ' + upg[u.id] + ' → ' + (upg[u.id] + 1) : 'NEW'}</i></button>`).join('');
+  $('levelup').style.display = 'flex';
+  [523, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, .18, 'triangle', .09), i * 80)); buzz([20, 30, 20]);
+}
+function pick(i) {
+  const u = choices[i]; if (!u || state !== 'levelup') return;
+  upg[u.id] = (upg[u.id] || 0) + 1; $('levelup').style.display = 'none'; state = 'play'; last = performance.now();
+  banner(u.ic + ' ' + u.n, 'Lv ' + upg[u.id]); wave(P.x, P.y, P.r, P.r * 7, '#8FF0FF', .6); blip(1046, .2, 'sine', .09);
+  if (xp >= need()) { xp -= need(); lvl++; levelUp(); }
+}
+$('lvcards').addEventListener('click', e => { const b = e.target.closest('.upg'); if (b) pick(+b.dataset.i); });
+function killCop(c, ram) {
+  if (c.dead) return; c.dead = true; kills++;
+  burst({ x: c.x, y: c.y, r: c.r, color: ram ? '#FFB37A' : '#DDE3EA', tier: 1 });
+  if (toks.length < MAXT) toks.push({ x: c.x, y: c.y, t: 0 });
+  blip(520 + Math.random() * 200, .06, 'square', .04);
+  if (ram) { shake = Math.max(shake, .25); buzz(20); }
+}
+function hurtCop(c, dmg, fx, fy) { c.hp -= dmg; const d = Math.hypot(c.x - fx, c.y - fy) || 1, kb = 60 + P.r * 3; c.vx = (c.x - fx) / d * kb; c.vy = (c.y - fy) / d * kb; if (c.hp <= 0) killCop(c, false); }
+function updateRogue(dt) {
+  const now = performance.now(), stars = Math.min(5, unlocked + 1), base = 95 + P.r * 3.6;
+  if (hitImm > 0) hitImm -= dt;
+  // 서브에이전트(공전)
+  const nO = upg.orbit || 0, oR = P.r * 2.3, oS = P.r * .3; orbA += dt * 2.6;
+  for (let k = 0; k < 4; k++) { const m = orbs[k]; m.visible = k < nO; if (k < nO) { const a = orbA + k * 6.283 / nO; OX[k] = P.x + Math.cos(a) * oR; OY[k] = P.y + Math.sin(a) * oR; m.position.set(OX[k], oS, OY[k]); m.scale.setScalar(oS); m.rotation.set(0, -a * 2, a * 3); } }
+  // 단속반 출동
+  copT -= dt;
+  if (copT <= 0 && cops.length < Math.min(MAXC, 4 + stars * 8)) { copT = Math.max(.28, 1.5 - stars * .22); const a = Math.random() * 6.283, d = P.r * 24 + 60; cops.push({ x: P.x + Math.cos(a) * d, y: P.y + Math.sin(a) * d, vx: 0, vy: 0, hp: stars, ocd: 0, r: 1, dead: false }); }
+  const cr = Math.max(6, P.r * .3), cv = base * (.5 + stars * .03), kk = 1 - Math.exp(-dt * 2.5);
+  for (let i = 0; i < cops.length; i++) {
+    const c = cops[i]; if (c.dead) continue; c.r = cr; c.ocd -= dt;
+    const dx = P.x - c.x, dy = P.y - c.y, d = Math.hypot(dx, dy) || .001;
+    if (d > P.r * 60 + 400) { c.dead = true; continue; }
+    c.vx += (dx / d * cv - c.vx) * kk; c.vy += (dy / d * cv - c.vy) * kk; c.x += c.vx * dt; c.y += c.vy * dt;
+    for (let j = 0; j < i; j++) { const o = cops[j]; if (o.dead) continue; const qx = c.x - o.x, qy = c.y - o.y, q = qx * qx + qy * qy, m = cr * 1.7; if (q < m * m && q > .0001) { const l = Math.sqrt(q), p = (m - l) / l * .5; c.x += qx * p; c.y += qy * p; o.x -= qx * p; o.y -= qy * p; } }
+    for (const e of ents) { if (e.orbit || e.r < cr * .9) continue; const qx = c.x - e.x, qy = c.y - e.y, rs = cr + e.r * (e.hard || 1); if (qx > rs || qx < -rs || qy > rs || qy < -rs) continue; const q = Math.hypot(qx, qy) || .001; if (q < rs) { c.x = e.x + qx / q * rs; c.y = e.y + qy / q * rs; } }
+    if (d < P.r + cr * .8) {
+      if (dashT > 0) { killCop(c, true); continue; }
+      const nx = -dx / d, ny = -dy / d; c.x = P.x + nx * (P.r + cr * .8); c.y = P.y + ny * (P.r + cr * .8); c.vx = nx * cv * 1.6; c.vy = ny * cv * 1.6;
+      if (hitImm <= 0 && pImm <= 0) { hitImm = .8; peakR = Math.max(peakR, P.r); P.r = Math.max(R0, peakR * .6, P.r * (1 - .009 * (1 - .25 * (upg.armor || 0)))); shake = Math.max(shake, .14); blip(240, .07, 'square', .05); buzz(12); if (now - lastBumpMsg > 1500) { lastBumpMsg = now; pop(P.x, P.r * 2.6, P.y, '과징금!', 'no'); } }
+    }
+    if (c.ocd <= 0) for (let k = 0; k < nO; k++) { const qx = c.x - OX[k], qy = c.y - OY[k], m = cr + oS; if (qx * qx + qy * qy < m * m) { c.ocd = .35; hurtCop(c, 1.5, OX[k], OY[k]); break; } }
+  }
+  // 아티팩트 충격파
+  const pl = upg.pulse || 0;
+  if (pl) { pulseT -= dt; if (pulseT <= 0) { pulseT = 4.4 - pl * .5; const R = P.r * (5 + pl); wave(P.x, P.y, P.r, R, '#FF7A45', .5); blip(140, .25, 'sine', .1);
+    for (const c of cops) if (!c.dead && (c.x - P.x) ** 2 + (c.y - P.y) ** 2 < R * R) hurtCop(c, 2 + pl * .5, P.x, P.y);
+    for (const e of ents) { if (e.ed || !e.obj || e.orbit || !e.co) continue; if ((e.x - P.x) ** 2 + (e.y - P.y) ** 2 > (R + e.r) ** 2) continue; e.r0 = e.r0 || e.r; if (e.r > e.r0 * .62) { e.r *= .95; e.obj.scale.setScalar(e.r); } } } }
+  // 툴 유즈(요격탄)
+  const bl = upg.bolt || 0;
+  if (bl) { boltT -= dt; if (boltT <= 0 && bolts.length < MAXB) { let best = null, bd = (P.r * 16 + 80) ** 2; for (const c of cops) { if (c.dead) continue; const q = (c.x - P.x) ** 2 + (c.y - P.y) ** 2; if (q < bd) { bd = q; best = c; } } if (best) { boltT = 1.1 / (.6 + bl * .4); bolts.push({ x: P.x, y: P.y, c: best, t: 0 }); blip(900, .05, 'sawtooth', .03); } } }
+  for (const b of bolts) { b.t += dt; const c = b.c; if (c.dead || b.t > 1.6) { b.dead = true; continue; } const qx = c.x - b.x, qy = c.y - b.y, q = Math.hypot(qx, qy) || .001, st = base * 3.2 * dt; if (q < st + c.r) { b.dead = true; hurtCop(c, 1.5 + bl * .5, b.x, b.y); } else { b.x += qx / q * st; b.y += qy / q * st; } }
+  // 토큰
+  const mr = P.r * (3 + 2.1 * (upg.magnet || 0)) + 20, ts = Math.max(2.4, P.r * .11);
+  for (const t of toks) { t.t += dt; const qx = P.x - t.x, qy = P.y - t.y, q = Math.hypot(qx, qy) || .001; if (q < P.r * 1.05) { t.dead = true; gainXp(1); blip(1320, .05, 'sine', .05); } else if (q < mr) { const st = base * 1.8 * dt; t.x += qx / q * st; t.y += qy / q * st; } else if (t.t > 25) t.dead = true; }
+  cops = cops.filter(c => !c.dead); bolts = bolts.filter(b => !b.dead); toks = toks.filter(t => !t.dead);
+  // 인스턴스 갱신
+  const fl = (now / 150) | 0;
+  for (let i = 0; i < cops.length; i++) { const c = cops[i]; m4.compose(v3.set(c.x, 0, c.y), q4.setFromAxisAngle(YAX, -Math.atan2(c.vy, c.vx)), s3.setScalar(c.r)); copBody.setMatrixAt(i, m4); copCab.setMatrixAt(i, m4); copWheel.setMatrixAt(i, m4); copTrim.setMatrixAt(i, m4); copBar.setMatrixAt(i, m4); copBar.setColorAt(i, (fl + i) & 1 ? tmpC.setRGB(3.4, .15, .15) : tmpC.setRGB(.2, .5, 3.6)); }
+  for (const m of [copBody, copCab, copWheel, copTrim, copBar]) { m.count = cops.length; m.instanceMatrix.needsUpdate = true; } copBar.instanceColor.needsUpdate = true;
+  for (let i = 0; i < toks.length; i++) { const t = toks[i]; m4.compose(v3.set(t.x, ts * (1.5 + .3 * Math.sin(now / 200 + i)), t.y), q4.setFromAxisAngle(YAX, now / 300 + i), s3.set(ts * .7, ts, ts * .7)); tokMesh.setMatrixAt(i, m4); }
+  tokMesh.count = toks.length; tokMesh.instanceMatrix.needsUpdate = true;
+  const bs = Math.max(2, P.r * .13); for (let i = 0; i < bolts.length; i++) { m4.makeScale(bs, bs, bs).setPosition(bolts[i].x, P.r * .8, bolts[i].y); boltMesh.setMatrixAt(i, m4); }
+  boltMesh.count = bolts.length; boltMesh.instanceMatrix.needsUpdate = true;
+}
+/* AI 밸리 지명 (바닥 스텐실) */
+{ const names = [['SAND HILL RD', 250, 1.2, 60], ['PALO ALTO', 760, .1, 150], ['MENLO PARK', 760, 3.3, 150], ['MOUNTAIN VIEW', 1520, 1.9, 300], ['SUNNYVALE', 1520, 5.0, 300], ['CUPERTINO', 2650, .9, 520], ['SAN JOSE', 2650, 4.1, 520], ['SAN FRANCISCO', 3850, 2.6, 640], ['SOMA', 3850, 5.7, 640], ['EL CAMINO REAL', 470, 4.5, 34], ['US 101', 1050, 2.6, 62], ['I-280', 2000, .3, 110], ['HWY 1', 3300, 3.7, 190]];
+  for (const [t, d, a, sz] of names) { const tex = canvasTex(1024, 160, c => { c.font = '900 130px ' + FONT; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#FFFFFF'; c.fillText(t, 512, 86); });
+    const m = new THREE.Mesh(PLANE, new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: sz < 200 && d < 500 || [470, 1050, 2000, 3300].includes(d) ? .75 : .32, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -12 }));
+    m.rotation.x = -Math.PI / 2; m.scale.set(sz * 6.4, sz, 1); m.position.set(Math.cos(a) * d, 0, Math.sin(a) * d); m.renderOrder = 6; scene.add(m); } }
+
 /* ================= 게임 로직 ================= */
 function update(dt) {
   let ix = input.dx, iy = input.dy;
@@ -814,7 +920,7 @@ function update(dt) {
   if (keys.ArrowUp || keys.w) iy -= 1; if (keys.ArrowDown || keys.s) iy += 1;
   const il = Math.hypot(ix, iy); if (il > 1) { ix /= il; iy /= il; }
   if (il > .2 && !moved) { moved = true; $('hint').style.display = 'none'; }
-  const maxV = (95 + P.r * 3.6) * (boostT > 0 ? 1.7 : 1) * (dashT > 0 ? 2.3 : feverT > 0 ? 1.2 : 1), k = 1 - Math.exp(-dt * (il > 0.05 ? 5 : 3));
+  const maxV = (95 + P.r * 3.6) * (1 + .1 * (upg.speed || 0)) * (boostT > 0 ? 1.7 : 1) * (dashT > 0 ? 2.3 : feverT > 0 ? 1.2 : 1), k = 1 - Math.exp(-dt * (il > 0.05 ? 5 : 3));
   if (boostT > 0) boostT -= dt; if (magT > 0) magT -= dt; if (dashT > 0) dashT -= dt; if (dashCd > 0) dashCd -= dt; if (feverT > 0) feverT -= dt;
   P.vx += (ix * maxV - P.vx) * k; P.vy += (iy * maxV - P.vy) * k;
   P.x += P.vx * dt; P.y += P.vy * dt;
@@ -826,7 +932,7 @@ function update(dt) {
   dustT -= dt;
   if (spNorm > .55 && dustT <= 0) { dustT = boostT > 0 ? .02 : .05; const q = pdata[pcur]; q.life = .45; q.x = P.x - P.vx / sp * P.r * .7 + (Math.random() - .5) * P.r; q.z = P.y - P.vy / sp * P.r * .7 + (Math.random() - .5) * P.r; q.y = 0; q.vx = -P.vx * .12; q.vz = -P.vy * .12; q.vy = P.r * (1.5 + Math.random() * 2); q.s = P.r * (.07 + Math.random() * .07); parts.setColorAt(pcur, tmpC.set(boostT > 0 ? '#FFD23F' : '#C9BEAA')); parts.instanceColor.needsUpdate = true; pcur = (pcur + 1) % PN; }
 
-  const thr = P.r * (dashT > 0 ? .98 : EAT); let ringDirty = false;
+  const thr = P.r * eatK(), nOrb = upg.orbit || 0, orbS = P.r * .3; let ringDirty = false;
   for (let i = ents.length - 1; i >= 0; i--) {
     const e = ents[i];
     const ed = e.r <= thr;
@@ -837,6 +943,11 @@ function update(dt) {
       if (e.tw > 0) { e.tw -= dt; e.obj.rotation.z = e.tw > 0 ? Math.sin(e.tw * 45) * .06 : 0; }
       if (e.hop > 0) { e.hop -= dt; const t = Math.max(0, e.hop) / .5; e.obj.position.y = t < 1 ? Math.sin(t * Math.PI) * e.r * .4 : 0; }
     }
+    if (nOrb && !e.orbit) { let got = false;
+      for (let k = 0; k < nOrb; k++) { const qx = e.x - OX[k], qy = e.y - OY[k], rs = e.r * (e.hard || 1) + orbS; if (qx * qx + qy * qy > rs * rs) continue;
+        if (e.r <= P.r * .5) { got = true; break; }
+        if (!ed && e.obj) { e.r0 = e.r0 || e.r; if (e.r > e.r0 * .62) { e.r *= 1 - .2 * dt; e.obj.scale.setScalar(e.r); } } }
+      if (got) { eat(e, i); ringDirty = true; continue; } }
     const dx = P.x - e.x, dy = P.y - e.y, d = Math.hypot(dx, dy) || 0.001, cr = ed ? e.r : e.r * (e.hard || 1);
     if (d > P.r + cr) continue;
     if (ed) { if (d < P.r + e.r * 0.25) { eat(e, i); ringDirty = true; } }
@@ -862,9 +973,11 @@ function update(dt) {
 
   while (unlocked < 4 && P.r * EAT >= TIERS[unlocked + 1].rmin) {
     unlocked++; banner('🔓 ' + TIERS[unlocked].name + ' 인수 가능!', '음악이 한 겹 더 쌓였어요'); blip(520, 0.35, 'sine', 0.1); buzz(30); wave(P.x, P.y, P.r, P.r * 14, null, .9); slowT = .1;
+    if (AC && !muted) for (let i = 0; i < 4; i++) { try { tone(AC.currentTime + .5 + i * .22, i % 2 ? 620 : 880, .2, 'square', .05); } catch (e) {} }
+    setTimeout(() => { if (state === 'play') pop(P.x, P.r * 3, P.y, '🚨 규제 레벨 ' + '★'.repeat(Math.min(5, unlocked + 1)), 'big'); }, 900);
     for (const e of ents) if (e.tier === unlocked) e.hop = .5 + Math.random() * .5;
   }
-  updateBots(dt); updatePups(dt, performance.now()); updateMission(dt, performance.now());
+  updateBots(dt); updatePups(dt, performance.now()); updateMission(dt, performance.now()); updateRogue(dt);
   if (comboT > 0) { comboT -= dt; if (comboT <= 0) { comboN = 0; feverNext = 35; $('combo').classList.remove('on'); } }
   shake = Math.max(0, shake - dt);
   timeLeft -= dt;
@@ -876,8 +989,8 @@ const VERBS = ['인수!', '흡수!', '합병!', '삼킴!', '대체!'];
 function eat(e, i) {
   ents.splice(i, 1);
   rings.setMatrixAt(e.idx, ZERO);
-  P.r = Math.sqrt(P.r * P.r + GROW * e.m * e.r * e.r * (feverT > 0 ? 1.3 : 1));
-  eatenCount++;
+  P.r = Math.sqrt(P.r * P.r + GROW * e.m * e.r * e.r * (feverT > 0 ? 1.3 : 1) * (1 + .12 * (upg.grow || 0)));
+  eatenCount++; gainXp(e.co ? e.tier * 2 + 1 : .5);
   if (mission && mission.e === e) missionEnd(true);
   // 공에 붙이기
   if (e.palm !== undefined) { palmT.setMatrixAt(e.palm, ZERO); palmF.setMatrixAt(e.palm, ZERO); palmT.instanceMatrix.needsUpdate = palmF.instanceMatrix.needsUpdate = true;
@@ -890,7 +1003,7 @@ function eat(e, i) {
   if (comboN >= 5) { const c = $('combo'); $('combon').textContent = '×' + comboN; c.classList.add('on'); c.style.transform = 'scale(' + Math.min(1.5, 1 + comboN * .012) + ')'; }
   if (e.co && e.tier >= unlocked - 1) pop(e.x, e.r * 2.2, e.y, QUIP[e.name] && Math.random() < .75 ? e.name + ' — ' + QUIP[e.name] : e.name + ' ' + VERBS[(Math.random() * VERBS.length) | 0], e.tier >= 3 ? 'big' : '');
   if (e.co && e.tier >= 2) notable.push(e);
-  if (e.co && e.tier === 4) { bigEaten.push(e.name); const q = T4.find(c => c[0] === e.name); banner(e.name + ' 인수 완료 (' + bigEaten.length + '/' + bigTotal + ')', q && q[3]); buzz([20, 30, 40]); shake = .3; slowT = .16; wave(e.x, e.y, e.r, e.r * 7, e.color, .8); }
+  if (e.co && e.tier === 4) { bigEaten.push(e.name); const q = T4.find(c => c[0] === e.name); banner('MISSION PASSED', e.name + ' 인수 (' + bigEaten.length + '/' + bigTotal + ') · ' + (q ? q[3] : ''), 'gta'); buzz([20, 30, 40]); shake = .3; slowT = .16; wave(e.x, e.y, e.r, e.r * 7, e.color, .8); }
   burst(e);
   blip((330 + e.tier * 90) * Math.pow(1.035, Math.min(comboN, 24)) + Math.random() * 20, 0.09 + e.tier * 0.03, 'triangle', 0.07);
 }
@@ -914,7 +1027,7 @@ function shareText() {
   const r = result, row = ['🚀', '☁️', '🏢', '🏙️', '🌍'].map((e, i) => (i < 4 ? r.unlocked > i : r.win) ? e : '▫️').join('');
   const names = r.names.slice(0, 3).join(', ');
   return r.win
-    ? `${headline(r)}\n\n클로드혼 #${DAY} 🟠 ${names} 포함 ${r.count}곳을 굴려 먹음.\n기업가치 ${fmtMoney(r.worth)} · 라이벌 AI ${r.ai}/${AIS.length} 흡수\n${row}\n\n너는 몇 초 걸려?`
+    ? `${headline(r)}\n\n클로드혼 #${DAY} 🟠 ${names} 포함 ${r.count}곳을 굴려 먹음.\n기업가치 ${fmtMoney(r.worth)} · Lv ${r.lvl} · 단속반 ${r.kills}대 격파 · 라이벌 AI ${r.ai}/${AIS.length}\n${row}\n\n너는 몇 초 걸려?`
     : `${headline(r)}\n\n클로드혼 #${DAY} 🟠 기업가치 ${fmtMoney(r.worth)}.\n빅테크 ${r.big}/${r.bigTotal} · 라이벌 AI ${r.ai}/${AIS.length} · ${r.rank}\n${row}\n\n나보다 많이 먹을 수 있어?`;
 }
 function drawCard() {
@@ -946,7 +1059,7 @@ function drawCard() {
   x.font = '800 40px ' + FONT; x.fillStyle = '#6B6860'; { const hl = headline(r); x.font = '800 100px ' + FONT; const fs = Math.min(40, 100 * 900 / x.measureText(hl).width); x.font = '800 ' + fs + 'px ' + FONT; x.fillText(hl, 540, 740); }
   x.font = '900 84px ' + FONT; x.fillStyle = '#1F1E1D'; x.fillText(r.rank, 540, 836);
   x.font = '900 150px ' + FONT; x.fillStyle = '#B85C3E'; x.fillText(fmtMoney(r.worth), 540, 990);
-  x.font = '700 33px ' + FONT; x.fillStyle = '#6B6860'; x.fillText('총 ' + r.count + '건 인수  ·  콤보 ×' + r.combo + '  ·  라이벌 AI ' + r.ai + '/' + AIS.length, 540, 1096);
+  x.font = '700 31px ' + FONT; x.fillStyle = '#6B6860'; x.fillText('Lv ' + r.lvl + '  ·  ' + r.count + '건 인수  ·  단속반 ' + r.kills + '대 격파  ·  라이벌 AI ' + r.ai + '/' + AIS.length, 540, 1096);
   // 티어 진행
   const labs = ['스타트업', 'SaaS', '엔터프라이즈', '빅테크', '전부'];
   labs.forEach((l, i) => { const on = i < 4 ? r.unlocked > i : r.win, bx = 100 + i * 180; x.fillStyle = on ? '#D97757' : '#E7E2D3'; rr(x, bx, 1150, 164, 60, 30); x.fill(); x.fillStyle = on ? '#fff' : '#A8A397'; x.font = '800 26px ' + FONT; x.fillText(l, bx + 82, 1182); });
@@ -954,17 +1067,17 @@ function drawCard() {
   return c;
 }
 function end(win) {
-  state = 'over'; up(); musicStop(); finT = 0; boostT = magT = dashT = feverT = 0; mission = null; mark.visible = false; $('dash').style.display = 'none'; $('ui').classList.remove('fever'); $('mission').style.display = 'none';
+  state = 'over'; up(); musicStop(); finT = 0; boostT = magT = dashT = feverT = 0; mission = null; mark.visible = false; $('levelup').style.display = 'none'; $('dash').style.display = 'none'; $('ui').classList.remove('fever'); $('mission').style.display = 'none';
   if (!win) cv.style.filter = 'grayscale(.75) brightness(.8)';
   const r = P.r;
   const rank = win ? '특이점 도달' : r < 40 ? '시드 단계 챗봇' : r < 90 ? '시리즈 A 유망주' : r < 170 ? 'SaaS 포식자' : r < 300 ? '빅테크의 악몽' : '거의 다 먹은 자';
   notable.sort((a, b) => b.r - a.r);
-  result = { win, sec: Math.max(1, Math.round(GAME_TIME - timeLeft)), worth: worth(), count: eatenCount, big: bigEaten.length, bigTotal, rank, unlocked, combo: maxCombo, ai: aiEaten.length,
+  result = { win, sec: Math.max(1, Math.round(GAME_TIME - timeLeft)), worth: worth(), count: eatenCount, big: bigEaten.length, bigTotal, rank, unlocked, combo: maxCombo, ai: aiEaten.length, lvl, kills,
     names: notable.slice(0, 6).map(e => e.name), tiles: notable.slice(0, 16).reverse().map(e => ({ name: e.name, color: e.color, tier: e.tier, slug: e.slug })) };
   const isBest = scoreOf(result) > scoreOf(bestRec);
   if (isBest) { bestRec = { win, sec: result.sec, worth: result.worth }; try { localStorage.setItem('claudehon_best', JSON.stringify(bestRec)); } catch (e) {} }
   if (win) [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => blip(f, 0.3, 'sine', 0.1), i * 130)); else blip(180, .5, 'sawtooth', .05);
-  banner(win ? '전 산업 인수 완료!' : '타임 오버', isBest ? '최고 기록 갱신' : '');
+  banner(win ? 'MISSION PASSED!' : 'WASTED', win ? '전 산업 인수 완료' + (isBest ? ' · 최고 기록' : '') : '해가 졌습니다', win ? 'gta' : 'wasted');
   const card = drawCard(); cardBlob = null;
   $('cardimg').src = card.toDataURL('image/png');
   card.toBlob(b => { cardBlob = b; }, 'image/png');
@@ -999,8 +1112,9 @@ function hud() {
     $('barfill').style.width = Math.max(0, Math.min(100, (P.r - prev) / (need - prev) * 100)) + '%';
   } else { $('nextname').textContent = '빅테크 ' + bigEaten.length + '/' + bigTotal + ' 인수'; $('barfill').style.width = (bigEaten.length / bigTotal * 100) + '%'; }
   $('buffs').innerHTML = (boostT > 0 ? '<span style="background:#FFD23F;color:#222">⚡ ' + Math.ceil(boostT) + '</span>' : '') + (magT > 0 ? '<span style="background:#C29BFF;color:#222">🧲 ' + Math.ceil(magT) + '</span>' : '') + (feverT > 0 ? '<span style="background:#FF5A1F;color:#fff">🔥 ' + Math.ceil(feverT) + '</span>' : '');
-  $('dash').style.setProperty('--cd', (1 - Math.max(0, dashCd) / DASH_CD) * 360 + 'deg'); $('dash').classList.toggle('ready', dashCd <= 0);
+  $('dash').style.setProperty('--cd', (1 - Math.max(0, dashCd) / (DASH_CD - (upg.haiku || 0))) * 360 + 'deg'); $('dash').classList.toggle('ready', dashCd <= 0);
   $('ui').classList.toggle('fever', feverT > 0);
+  $('lv').textContent = 'Lv ' + lvl; $('xpfill').style.width = Math.min(100, xp / need() * 100) + '%'; { const st = Math.min(5, unlocked + 1); $('stars').textContent = '★'.repeat(st) + '☆'.repeat(5 - st); }
   $('mission').textContent = mission ? '🎯 긴급 인수: ' + mission.e.name + ' · ' + Math.ceil(mission.t) + '초' : ''; $('mission').style.display = mission ? 'inline-block' : 'none';
   radar();
 }
@@ -1023,6 +1137,7 @@ function radar() {
     if (big) { c.strokeStyle = e.ed ? '#FF8A5C' : e.color; c.lineWidth = 2.5; c.stroke(); }
   }
   if (mission) { let dx = (mission.e.x - P.x) * k, dy = (mission.e.y - P.y) * k; const d = Math.hypot(dx, dy); if (d > R - 9) { dx *= (R - 9) / d; dy *= (R - 9) / d; } c.strokeStyle = '#FF4B3A'; c.lineWidth = 4; c.beginPath(); c.arc(dx, dy, 9 + 3 * Math.sin(performance.now() / 120), 0, 6.3); c.stroke(); }
+  c.fillStyle = '#FF5A4D'; for (const q of cops) { const dx = (q.x - P.x) * k, dy = (q.y - P.y) * k; if (dx * dx + dy * dy > (R - 3) * (R - 3)) continue; c.fillRect(dx - 2, dy - 2, 4, 4); }
   for (const p of pups) { const dx = (p.x - P.x) * k, dy = (p.y - P.y) * k; if (Math.hypot(dx, dy) > R - 4) continue; c.fillStyle = p.T.col; c.beginPath(); c.moveTo(dx, dy - 5); c.lineTo(dx + 4, dy); c.lineTo(dx, dy + 5); c.lineTo(dx - 4, dy); c.fill(); }
   for (const b of bots) { let dx = (b.x - P.x) * k, dy = (b.y - P.y) * k; const d = Math.hypot(dx, dy); if (d > R - 8) { dx *= (R - 8) / d; dy *= (R - 8) / d; }
     const danger = P.r <= b.r * EAT; c.fillStyle = b.color; c.strokeStyle = danger ? '#FF3B30' : '#fff'; c.lineWidth = danger ? 4 : 2.5; c.beginPath(); c.arc(dx, dy, Math.max(6, b.r * k), 0, 6.3); c.fill(); c.stroke(); }
@@ -1094,7 +1209,7 @@ function frame(now) {
     if (perfN >= 90) { const avg = perfSum / perfN; perfN = 0; perfSum = 0; if (avg > 1 / 34 && quality > 0 && !qs.get('q')) setQuality(quality - 1); }
   }
   else if (state === 'menu') { q4.setFromAxisAngle(v3.set(0, 1, 0), dt * .5); ball.quaternion.premultiply(q4); }
-  else { P.vx *= .92; P.vy *= .92; }
+  else if (state === 'over') { P.vx *= .92; P.vy *= .92; }
   render(dt, now);
   requestAnimationFrame(frame);
 }
@@ -1117,6 +1232,6 @@ applyTod(.66, 10);
 renderer.compile(scene, camera);
 $('loading').style.display = 'none';
 // 디버그·자동 테스트용
-window.__game = { get P() { return P; }, get ents() { return ents; }, get state() { return state; }, input, set time(v) { timeLeft = v; }, get info() { return renderer.info.render; }, get quality() { return quality; }, get bots() { return bots; }, get cam() { return { p: camera.position.toArray().map(Math.round), d: camera.getWorldDirection(new THREE.Vector3()).toArray().map(v => +v.toFixed(2)), fov: camera.fov, intro: introT, camR }; }, frame(dt) { if (state === 'intro') { introT -= dt; if (introT <= 0) state = 'play'; } render(dt, performance.now()); }, get left() { return timeLeft; }, dash, get fever() { return feverT; }, get missions() { return missionsDone; }, get ai() { return aiEaten.length; }, sim(dt) { if (state === 'intro') { introT = 0; state = 'play'; } if (state === 'play') update(dt); }, get tod() { return todCur; },
+window.__game = { get P() { return P; }, get ents() { return ents; }, get state() { return state; }, input, set time(v) { timeLeft = v; }, get info() { return renderer.info.render; }, get quality() { return quality; }, get bots() { return bots; }, get cam() { return { p: camera.position.toArray().map(Math.round), d: camera.getWorldDirection(new THREE.Vector3()).toArray().map(v => +v.toFixed(2)), fov: camera.fov, intro: introT, camR }; }, frame(dt) { if (state === 'intro') { introT -= dt; if (introT <= 0) state = 'play'; } render(dt, performance.now()); }, get left() { return timeLeft; }, dash, get fever() { return feverT; }, get missions() { return missionsDone; }, get ai() { return aiEaten.length; }, pick, get lvl() { return lvl; }, get kills() { return kills; }, get upg() { return upg; }, sim(dt) { if (state === 'levelup') pick((Math.random() * 3) | 0); if (state === 'intro') { introT = 0; state = 'play'; } if (state === 'play') update(dt); }, get tod() { return todCur; },
   shot(w, h) { const pw = W, ph = H; renderer.setPixelRatio(1); renderer.setSize(w, h, false); composer.setPixelRatio(1); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); render(0, performance.now()); const u = cv.toDataURL('image/png'); resize(); return u; } };
 requestAnimationFrame(frame);

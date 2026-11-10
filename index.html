@@ -57,6 +57,26 @@
   #ui.fever::after { content:''; position:absolute; inset:0; pointer-events:none; box-shadow:inset 0 0 44px 8px rgba(255,96,24,.6); animation:fev .35s infinite alternate; }
   @keyframes fev { to { box-shadow:inset 0 0 58px 12px rgba(255,190,40,.7); } }
   .pop.say { background:#fff; color:#1F1E1D; text-shadow:none; font-size:12px; padding:5px 10px; border-radius:14px 14px 14px 3px; box-shadow:0 3px 10px rgba(0,0,0,.25); animation-duration:2.2s; }
+  #lvrow { display:flex; align-items:center; gap:8px; margin-top:7px; font-size:11px; font-weight:800; }
+  #xpbar { flex:1; height:5px; border-radius:3px; background:rgba(255,255,255,.2); overflow:hidden; }
+  #xpfill { height:100%; width:0; background:#5CE1FF; box-shadow:0 0 8px #5CE1FF; transition:width .15s; }
+  #stars { letter-spacing:1px; color:#FFD23F; font-size:13px; text-shadow:0 0 6px rgba(255,160,0,.7); }
+  #banner.gta b { color:#F4C430; font-size:40px; font-style:italic; letter-spacing:.01em; -webkit-text-stroke:1.5px #1A1205; text-shadow:0 4px 0 #1A1205, 0 10px 26px rgba(0,0,0,.6); }
+  #banner.gta i { background:rgba(10,10,10,.75); color:#fff; }
+  #banner.wasted b { color:#D8372B; font-size:58px; font-style:italic; -webkit-text-stroke:2px #1A0505; text-shadow:0 5px 0 #1A0505, 0 12px 30px rgba(0,0,0,.7); }
+  #banner.wasted i { background:rgba(10,10,10,.75); color:#fff; }
+  #levelup { display:none; background:rgba(6,10,18,.55); flex-direction:column; gap:12px; }
+  #lvtitle { font-size:44px; font-weight:900; font-style:italic; color:#5CE1FF; -webkit-text-stroke:1.5px #06202A; text-shadow:0 4px 0 #06202A, 0 0 28px rgba(92,225,255,.7); letter-spacing:.03em; }
+  #lvsub { color:#fff; font-weight:700; font-size:14px; margin-top:-8px; text-shadow:0 2px 6px rgba(0,0,0,.6); }
+  #lvcards { width:100%; max-width:380px; display:flex; flex-direction:column; gap:10px; }
+  .upg { display:flex; align-items:center; gap:12px; text-align:left; padding:14px 14px; margin:0; background:rgba(250,249,245,.97); color:var(--ink); border:2px solid rgba(255,255,255,.9); border-radius:18px; box-shadow:0 5px 0 rgba(0,0,0,.35), 0 10px 26px rgba(0,0,0,.35); }
+  .upg:active { transform:translateY(3px); box-shadow:0 2px 0 rgba(0,0,0,.35); }
+  .upg .ic { font-size:32px; flex:none; width:44px; text-align:center; }
+  .upg .tx { flex:1; min-width:0; }
+  .upg b { display:block; font-size:17px; }
+  .upg small { display:block; font-size:12px; font-weight:500; color:var(--sub); line-height:1.4; margin-top:2px; word-break:keep-all; }
+  .upg i { flex:none; font-style:normal; font-size:11px; font-weight:800; background:var(--clay); color:#fff; padding:4px 8px; border-radius:20px; }
+  .valley { font-size:15px; font-weight:900; font-style:italic; letter-spacing:.34em; color:var(--clay-d); margin:-2px 0 4px; padding-left:.34em; }
   #combo { position:absolute; right:16px; top:calc(env(safe-area-inset-top) + 132px); font-weight:900; font-size:26px; color:#FFB08E; font-style:italic;
     text-shadow:0 2px 10px rgba(0,0,0,.55),0 0 2px rgba(0,0,0,.6); opacity:0; transition:opacity .2s; transform-origin:right center; }
   #combo.on { opacity:1; }
@@ -113,13 +133,14 @@
     <div class="row">
       <div class="pill"><div class="lab">기업가치</div><div class="val" id="worth">$10K</div></div>
       <div class="row">
-        <div class="pill" style="text-align:right"><div class="lab">남은 시간</div><div class="val" id="time">2:10</div></div>
+        <div class="pill" style="text-align:right"><div class="lab">남은 시간</div><div class="val" id="time">2:30</div></div>
         <button id="mute" aria-label="소리 끄기">🔊</button>
       </div>
     </div>
     <div class="pill" id="next">
       <div id="nextlab"><span id="nextname">다음 해금</span><span id="eaten">0건 인수</span></div>
       <div id="bar"><div id="barfill"></div></div>
+      <div id="lvrow"><span id="lv">Lv 1</span><div id="xpbar"><div id="xpfill"></div></div><span id="stars">★☆☆☆☆</span></div>
     </div>
     <div id="buffs"></div>
     <div id="mission"></div>
@@ -135,21 +156,27 @@
     <div class="panel">
       <span class="day" id="daytag">오늘의 맵</span>
       <h1>클로드<span>혼</span></h1>
+      <div class="valley">AI VALLEY</div>
       <p>버그 한 마리에서 빅테크까지.<br>굴리고, 붙이고, 전부 인수합병하세요.</p>
       <div id="rival"></div>
       <div class="how">
-        👆 화면을 누른 채 <b>드래그</b>해서 굴리기<br>
+        👆 드래그로 굴리기 · 💥 <b>돌진</b> 버튼으로 들이받기<br>
         🟠 바닥에 <b>빛나는 링</b>이 있으면 먹을 수 있음<br>
-        🏢 나보다 큰 건물은 부딪히면 튕겨요<br>
-        🤖 <b>라이벌 AI 공</b>이 돌아다녀요. 나보다 크면 피하고, 작아지면 먹기<br>
-        💥 <b>돌진</b> 버튼: 살짝 큰 것도 삼키고, 큰 건물·라이벌은 들이받아 깎기<br>
-        💎 빛기둥은 <b>파워업</b>, 🎯 <b>긴급 인수</b>는 +3초, 콤보 35는 🔥 <b>피버</b><br>
-        🌇 <b>해가 지기 전</b>(2분 10초)에 빅테크 9곳을 전부 삼키면 승리
+        ⬆️ 먹고 토큰을 모아 <b>레벨업</b>, 능력 3개 중 하나 선택<br>
+        🚨 <b>단속반</b> 차량은 닿으면 과징금. 무기로 잡거나 돌진으로 박기<br>
+        🤖 <b>라이벌 AI 공</b>은 크면 피하고 작으면 먹기<br>
+        🌇 <b>해 지기 전</b>에 빅테크 9곳을 전부 삼키면 승리
       </div>
       <button id="go">굴리기 시작</button>
       <div id="bestline"></div>
       <div class="fine">팬메이드 패러디 게임입니다. 등장하는 회사명은 각 소유자의 상표이며, Anthropic을 포함한 어떤 회사와도 제휴·후원 관계가 없습니다.</div>
     </div>
+  </div>
+
+  <div class="screen" id="levelup">
+    <div id="lvtitle">LEVEL 2</div>
+    <div id="lvsub">능력을 하나 고르세요</div>
+    <div id="lvcards"></div>
   </div>
 
   <div class="screen" id="over">
