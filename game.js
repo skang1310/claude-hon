@@ -1324,7 +1324,7 @@ $('ssave').addEventListener('click', saveImage);
 
 
 /* ================= 공용 랭킹 (Cloudflare Worker) ================= */
-const RANK_API = qs.get('api') || 'https://claude-hon-rank.skang1310-336.workers.dev';
+const RANK_API = qs.get('api') || 'https://claude-hon.skang1310-336.workers.dev/api';
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 let nick = ''; try { nick = localStorage.getItem('claudehon_nick') || ''; } catch (e) {}
 $('nick').value = nick;
