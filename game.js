@@ -1084,7 +1084,7 @@ function spawnPortals(rnd) {
   for (const p of portals) scene.remove(p.g); portals = [];
   for (const d of [620, 1500, 2700]) { let x = 0, y = 0; for (let t = 0; t < 40; t++) { const a = rnd() * 6.283; x = Math.cos(a) * d; y = Math.sin(a) * d; let ok = true; for (const e of ents) if ((e.x - x) ** 2 + (e.y - y) ** 2 < (e.r + d * .04 + 20) ** 2) { ok = false; break; } if (ok) break; }
     const s = 8 + d * .02, g = new THREE.Group(), t1 = new THREE.Mesh(portalGeo, portalMat); t1.position.y = 1.2; g.add(t1);
-    g.add(new THREE.Mesh(BEAM, new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, .6, 3), transparent: true, opacity: .3, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false })));
+    { const bm = new THREE.Mesh(BEAM, new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, .6, 3), transparent: true, opacity: .16, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false })); bm.scale.set(.5, .6, .5); g.add(bm); }
     g.position.set(x, 0, y); g.scale.setScalar(s); scene.add(g); portals.push({ x, y, s, g, t1 }); }
 }
 function resetLoot() { for (const l of loots) lootRoot.remove(l.g); loots = []; gear = {}; uniqGot = 0; riftsDone = 0; eliteT = 16; gob = null; gobT = 28; gobObj.visible = false; rift = null; riftRoot.visible = false; recalcGear(); }
