@@ -95,6 +95,13 @@
   #gear span { width:38px; height:38px; border-radius:10px; background:rgba(14,16,20,.6); border:2px solid; display:flex; align-items:center; justify-content:center; font-size:19px; }
   #banner.r2 b { color:#FFE14D; } #banner.r3 b { color:#FF8A2B; text-shadow:0 0 22px rgba(255,138,43,.9), 0 3px 12px rgba(0,0,0,.7); } #banner.r4 b { color:#3DFF7A; text-shadow:0 0 22px rgba(61,255,122,.8), 0 3px 12px rgba(0,0,0,.7); }
   #banner.r2 i, #banner.r3 i, #banner.r4 i { background:rgba(10,10,10,.78); color:#fff; }
+  #nickrow { display:flex; align-items:center; gap:8px; margin:8px 0 0; font-size:13px; color:var(--sub); }
+  #nick { flex:1; min-width:0; font:inherit; font-size:15px; font-weight:700; color:var(--ink); padding:9px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; user-select:text; -webkit-user-select:text; touch-action:auto; outline:none; }
+  #nick:focus { border-color:var(--clay); }
+  #grank, #grank2 { font-size:12px; color:var(--sub); margin-top:8px; text-align:left; }
+  #grank b, #grank2 b { display:block; color:var(--ink); margin-bottom:3px; text-align:center; }
+  #grank div, #grank2 div { display:flex; justify-content:space-between; gap:8px; padding:2px 4px; border-top:1px solid var(--line); }
+  #grank div.me, #grank2 div.me { background:#FBEDE6; color:var(--clay-d); font-weight:800; border-radius:6px; }
   #rank { font-size:12px; color:var(--sub); margin-top:8px; text-align:left; }
   #rank b { display:block; color:var(--ink); margin-bottom:3px; text-align:center; }
   #rank div { display:flex; justify-content:space-between; padding:2px 4px; border-top:1px solid var(--line); }
@@ -194,9 +201,11 @@
       <div id="event"></div>
       <div id="models"><button data-m="haiku">Haiku</button><button data-m="sonnet">Sonnet</button><button data-m="opus">Opus</button></div>
       <div id="modeldesc"></div>
+      <div id="nickrow"><span>닉네임</span><input id="nick" maxlength="12" placeholder="익명" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
       <button id="go">굴리기 시작</button>
       <div id="bestline"></div>
       <div id="achline"></div>
+      <div id="grank"></div>
       <div id="rank"></div>
       <div class="fine">팬메이드 패러디 게임입니다. 등장하는 회사명은 각 소유자의 상표이며, Anthropic을 포함한 어떤 회사와도 제휴·후원 관계가 없습니다.</div>
     </div>
@@ -213,6 +222,7 @@
     <div class="panel">
       <img id="cardimg" alt="결과 카드">
       <div id="ach"></div>
+      <div id="grank2"></div>
       <button id="share">결과 공유하기</button>
       <div class="btnrow">
         <button class="sec" id="sx">𝕏</button>

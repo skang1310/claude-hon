@@ -519,7 +519,7 @@ cv.addEventListener('pointermove', e => {
 });
 const up = () => { input.active = false; input.dx = input.dy = 0; stick.style.display = 'none'; };
 cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
-window.addEventListener('keydown', e => { keys[e.key] = true; }); window.addEventListener('keyup', e => { keys[e.key] = false; });
+window.addEventListener('keydown', e => { if (e.target.tagName !== 'INPUT') keys[e.key] = true; }); window.addEventListener('keyup', e => { keys[e.key] = false; });
 document.addEventListener('touchmove', e => { if (!e.target.closest || !e.target.closest('.panel')) e.preventDefault(); }, { passive: false });
 document.addEventListener('gesturestart', e => e.preventDefault());
 cv.addEventListener('contextmenu', e => e.preventDefault());
@@ -784,7 +784,7 @@ function dash() {
   if (AC && !muted) { try { hiss(AC.currentTime, .35, .16, 900); tone(AC.currentTime, 180, .3, 'sawtooth', .09, 700, 2600); } catch (e) {} }
 }
 $('dash').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); dash(); });
-window.addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); dash(); } });
+window.addEventListener('keydown', e => { if (e.code === 'Space' && e.target.tagName !== 'INPUT') { e.preventDefault(); dash(); } });
 function startFever() {
   feverT = G.pw.fever ? 10 : 5; feverNext = comboN + 60; banner('🔥 FEVER', '5초 동안 성장 1.3배 · 속도 UP'); wave(P.x, P.y, P.r, P.r * 12, '#FF5A1F', .9); slowT = .1; buzz([30, 30, 30, 30, 60]);
   [523, 659, 784, 1046, 1318].forEach((f, i) => setTimeout(() => blip(f, .12, 'square', .07), i * 50));
@@ -1294,6 +1294,7 @@ function end(win) {
   const isBest = scoreOf(result) > scoreOf(bestRec);
   { const fresh = ACH.filter(a => !achGot[a.id] && a.t(result)); for (const a of fresh) achGot[a.id] = 1; try { localStorage.setItem('claudehon_ach', JSON.stringify(achGot)); } catch (e) {}
     const got = ACH.filter(a => achGot[a.id]).length; $('ach').innerHTML = '🏅 업적 ' + got + '/' + ACH.length + (fresh.length ? ' · <b>새로 달성: ' + fresh.map(a => a.n).join(', ') + '</b>' : ''); }
+  submitScore(result);
   runs.push({ win, sec: result.sec, worth: result.worth, model: M.n, lvl, day: DAY }); runs.sort((a, b) => scoreOf(b) - scoreOf(a)); runs = runs.slice(0, 10); try { localStorage.setItem('claudehon_runs', JSON.stringify(runs)); } catch (e) {} renderRank();
   if (isBest) { bestCurve = curve.slice(); try { localStorage.setItem('claudehon_curve', JSON.stringify(bestCurve)); } catch (e) {} }
   if (isBest) { bestRec = { win, sec: result.sec, worth: result.worth }; try { localStorage.setItem('claudehon_best', JSON.stringify(bestRec)); } catch (e) {} }
@@ -1320,6 +1321,29 @@ $('sth').addEventListener('click', () => window.open('https://www.threads.net/in
 $('scopy').addEventListener('click', async () => toast(await copyText(shareText() + '\n' + shareUrl()) ? '복사했어요' : '복사하지 못했어요'));
 $('ssave').addEventListener('click', saveImage);
 
+
+
+/* ================= 공용 랭킹 (Cloudflare Worker) ================= */
+const RANK_API = qs.get('api') || 'https://claude-hon-rank.skang1310-336.workers.dev';
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let nick = ''; try { nick = localStorage.getItem('claudehon_nick') || ''; } catch (e) {}
+$('nick').value = nick;
+$('nick').addEventListener('input', () => { nick = $('nick').value.trim().slice(0, 12); try { localStorage.setItem('claudehon_nick', nick); } catch (e) {} });
+function renderTop(el, top, myRank) {
+  if (!top || !top.length) { el.innerHTML = '<b>🌍 오늘의 랭킹</b><div><span>아직 기록이 없어요. 첫 번째가 되어 보세요</span></div>'; return; }
+  const me = nick || '익명';
+  el.innerHTML = '<b>🌍 오늘의 랭킹' + (myRank ? ' · 내 순위 ' + myRank + '위' : '') + '</b>' + top.slice(0, 10).map((r, i) => `<div${r.n === me ? ' class="me"' : ''}><span>${i + 1}. ${esc(r.n)}</span><span>${r.w ? r.s + '초 클리어' : fmtMoney(r.v)} · ${esc(r.m)}</span></div>`).join('');
+}
+async function loadTop() { try { const r = await fetch(RANK_API + '/top?day=' + DAY, { signal: AbortSignal.timeout(5000) }); const j = await r.json(); renderTop($('grank'), j.top); } catch (e) { $('grank').innerHTML = ''; } }
+async function submitScore(res) {
+  if (qs.get('seed')) { $('grank2').innerHTML = ''; return; }
+  $('grank2').innerHTML = '<b>🌍 오늘의 랭킹</b><div><span>기록 올리는 중…</span></div>';
+  try {
+    const r = await fetch(RANK_API + '/score', { method: 'POST', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(6000),
+      body: JSON.stringify({ day: DAY, name: nick || '익명', model: res.model, win: res.win, sec: res.sec, worth: res.worth, lvl: res.lvl }) });
+    const j = await r.json(); if (j.error) throw new Error(j.error); renderTop($('grank2'), j.top, j.rank); renderTop($('grank'), j.top);
+  } catch (e) { $('grank2').innerHTML = ''; }
+}
 
 /* ================= 프레임 ================= */
 function hud() {
@@ -1446,7 +1470,7 @@ function start() {
 $('go').addEventListener('click', start); $('again').addEventListener('click', start);
 
 /* 시작 화면 */
-$('daytag').textContent = '오늘의 맵 #' + DAY; $('event').innerHTML = '📅 오늘의 이벤트 <b>' + EV.n + '</b> · ' + EV.d; setModel(modelId); renderRank();
+$('daytag').textContent = '오늘의 맵 #' + DAY; $('event').innerHTML = '📅 오늘의 이벤트 <b>' + EV.n + '</b> · ' + EV.d; setModel(modelId); renderRank(); loadTop();
 { const got = ACH.filter(a => achGot[a.id]).length; $('achline').textContent = '🏅 업적 ' + got + '/' + ACH.length; $('achline').title = ACH.map(a => (achGot[a.id] ? '✅ ' : '⬜ ') + a.n + ' — ' + a.d).join('\n'); }
 if (rival) { const el = $('rival'); el.style.display = 'block'; el.textContent = '🔥 친구 기록: ' + recText(rival) + ' — 이길 수 있어요?'; $('go').textContent = '도전하기'; }
 if (bestRec) $('bestline').textContent = '내 최고 기록 · ' + recText(bestRec);
@@ -1457,6 +1481,6 @@ applyTod(.66, 10);
 renderer.compile(scene, camera);
 $('loading').style.display = 'none';
 // 디버그·자동 테스트용
-window.__game = { get P() { return P; }, get ents() { return ents; }, get state() { return state; }, input, set time(v) { timeLeft = v; }, get info() { return renderer.info.render; }, get quality() { return quality; }, get bots() { return bots; }, get cam() { return { p: camera.position.toArray().map(Math.round), d: camera.getWorldDirection(new THREE.Vector3()).toArray().map(v => +v.toFixed(2)), fov: camera.fov, intro: introT, camR }; }, frame(dt) { if (state === 'intro') { introT -= dt; if (introT <= 0) state = 'play'; } render(dt, performance.now()); }, get left() { return timeLeft; }, dash, get fever() { return feverT; }, get missions() { return missionsDone; }, get ai() { return aiEaten.length; }, pick, setModel, dropLoot, get gear() { return gear; }, get rift() { return rift; }, get portals() { return portals; }, get res() { return result; }, spawnBoss, get lvl() { return lvl; }, get kills() { return kills; }, get upg() { return upg; }, sim(dt) { if (state === 'levelup') pick((Math.random() * 3) | 0); if (state === 'intro') { introT = 0; state = 'play'; } if (state === 'play') update(dt); }, get tod() { return todCur; },
+if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) window.__game = { get P() { return P; }, get ents() { return ents; }, get state() { return state; }, input, set time(v) { timeLeft = v; }, get info() { return renderer.info.render; }, get quality() { return quality; }, get bots() { return bots; }, get cam() { return { p: camera.position.toArray().map(Math.round), d: camera.getWorldDirection(new THREE.Vector3()).toArray().map(v => +v.toFixed(2)), fov: camera.fov, intro: introT, camR }; }, frame(dt) { if (state === 'intro') { introT -= dt; if (introT <= 0) state = 'play'; } render(dt, performance.now()); }, get left() { return timeLeft; }, dash, get fever() { return feverT; }, get missions() { return missionsDone; }, get ai() { return aiEaten.length; }, pick, setModel, dropLoot, get gear() { return gear; }, get rift() { return rift; }, get portals() { return portals; }, get res() { return result; }, spawnBoss, get lvl() { return lvl; }, get kills() { return kills; }, get upg() { return upg; }, sim(dt) { if (state === 'levelup') pick((Math.random() * 3) | 0); if (state === 'intro') { introT = 0; state = 'play'; } if (state === 'play') update(dt); }, get tod() { return todCur; },
   shot(w, h) { const pw = W, ph = H; renderer.setPixelRatio(1); renderer.setSize(w, h, false); composer.setPixelRatio(1); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); render(0, performance.now()); const u = cv.toDataURL('image/png'); resize(); return u; } };
 requestAnimationFrame(frame);
