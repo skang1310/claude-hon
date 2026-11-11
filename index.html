@@ -91,6 +91,13 @@
   #event { font-size:12.5px; color:var(--ink); background:#FFF3D6; border:1px solid #F1D48A; border-radius:12px; padding:8px 10px; margin:10px 0 0; }
   #achline, #ach { font-size:12px; color:var(--sub); margin-top:6px; }
   #ach b { color:var(--clay-d); }
+  #gear { position:absolute; left:50%; transform:translateX(-50%); bottom:calc(env(safe-area-inset-bottom) + 22px); display:none; gap:6px; }
+  #gear span { width:38px; height:38px; border-radius:10px; background:rgba(14,16,20,.6); border:2px solid; display:flex; align-items:center; justify-content:center; font-size:19px; }
+  #banner.r2 b { color:#FFE14D; } #banner.r3 b { color:#FF8A2B; text-shadow:0 0 22px rgba(255,138,43,.9), 0 3px 12px rgba(0,0,0,.7); } #banner.r4 b { color:#3DFF7A; text-shadow:0 0 22px rgba(61,255,122,.8), 0 3px 12px rgba(0,0,0,.7); }
+  #banner.r2 i, #banner.r3 i, #banner.r4 i { background:rgba(10,10,10,.78); color:#fff; }
+  #rank { font-size:12px; color:var(--sub); margin-top:8px; text-align:left; }
+  #rank b { display:block; color:var(--ink); margin-bottom:3px; text-align:center; }
+  #rank div { display:flex; justify-content:space-between; padding:2px 4px; border-top:1px solid var(--line); }
   #combo { position:absolute; right:16px; top:calc(env(safe-area-inset-top) + 132px); font-weight:900; font-size:26px; color:#FFB08E; font-style:italic;
     text-shadow:0 2px 10px rgba(0,0,0,.55),0 0 2px rgba(0,0,0,.6); opacity:0; transition:opacity .2s; transform-origin:right center; }
   #combo.on { opacity:1; }
@@ -166,6 +173,7 @@
   <div id="stick"><div id="knob"></div></div>
   <canvas id="radar" width="220" height="220"></canvas>
   <button id="dash" aria-label="돌진">돌진</button>
+  <div id="gear"></div>
 
   <div class="screen" id="start">
     <div class="panel">
@@ -180,6 +188,7 @@
         ⬆️ 먹고 토큰을 모아 <b>레벨업</b>, 능력 3개 중 하나 선택<br>
         🚨 <b>단속반</b> 차량은 닿으면 과징금. 무기로 잡거나 돌진으로 박기<br>
         🤖 <b>라이벌 AI 공</b>은 크면 피하고 작으면 먹기<br>
+        🎒 빛기둥 <b>전리품</b>은 자동 장착, 보라색 <b>균열</b>은 던전 입구<br>
         🌇 <b>해 지기 전</b>에 빅테크 9곳을 전부 삼키면 승리
       </div>
       <div id="event"></div>
@@ -188,6 +197,7 @@
       <button id="go">굴리기 시작</button>
       <div id="bestline"></div>
       <div id="achline"></div>
+      <div id="rank"></div>
       <div class="fine">팬메이드 패러디 게임입니다. 등장하는 회사명은 각 소유자의 상표이며, Anthropic을 포함한 어떤 회사와도 제휴·후원 관계가 없습니다.</div>
     </div>
   </div>
